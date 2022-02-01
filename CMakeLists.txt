@@ -359,7 +359,7 @@ set(INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/src"
 
 if (${WITH_XENOMAI})
     # explicitly link with cobalt lib
-    set(XENOMAI_BASE_DIR "/usr/xenomai" CACHE STRING "xenomai base dir path")
+    set(XENOMAI_BASE_DIR "/opt/evl" CACHE STRING "xenomai base dir path")
 
     if(NOT "$ENV{CMAKE_SYSROOT}" STREQUAL "")
         set(CMAKE_SYSROOT "$ENV{CMAKE_SYSROOT}")
@@ -370,12 +370,12 @@ if (${WITH_XENOMAI})
         message("XENOMAI_BASE_DIR is " ${XENOMAI_BASE_DIR})
     endif()
 
-    find_library(COBALT_LIB cobalt HINTS ${XENOMAI_BASE_DIR}/lib)
+    find_library(COBALT_LIB evl HINTS ${XENOMAI_BASE_DIR}/lib)
 
     set(TWINE_WITH_XENOMAI ON CACHE BOOL "" FORCE)
     find_library(RASPA_LIB
                  NAMES raspa
-                 PATHS /usr/lib /usr/local/lib
+                 PATHS /usr/local/lib
                  )
     set(EXTRA_BUILD_LIBRARIES ${EXTRA_BUILD_LIBRARIES} asound ${RASPA_LIB} ${COBALT_LIB})
 else()

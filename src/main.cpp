@@ -388,6 +388,12 @@ int main(int argc, char* argv[])
     {
         error_exit("Failed to load host configuration from config file");
     }
+
+    if(frontend_type == FrontendType::XENOMAI_RASPA)
+    {
+        sushi::audio_frontend::XenomaiRaspaFrontend * ptr = static_cast<sushi::audio_frontend::XenomaiRaspaFrontend *>(audio_frontend.get());
+        ptr->adjust_rate();
+    }
     status = configurator->load_tracks();
     if (status != sushi::jsonconfig::JsonConfigReturnStatus::OK)
     {
@@ -438,7 +444,9 @@ int main(int argc, char* argv[])
 
     if (frontend_type == FrontendType::JACK || frontend_type == FrontendType::XENOMAI_RASPA)
     {
+        // Debug
         midi_frontend = std::make_unique<sushi::midi_frontend::AlsaMidiFrontend>(midi_inputs, midi_outputs, midi_dispatcher.get());
+        // midi_frontend = std::make_unique<sushi::midi_frontend::NullMidiFrontend>(midi_dispatcher.get());
         osc_frontend = std::make_unique<sushi::control_frontend::OSCFrontend>(engine.get(),
                                                                               controller.get(),
                                                                               osc_server_port,
@@ -464,14 +472,14 @@ int main(int argc, char* argv[])
     }
 
     configurator.reset();
-
+    // /* debug
     auto midi_ok = midi_frontend->init();
     if (!midi_ok)
     {
         error_exit("Failed to setup Midi frontend");
     }
     midi_dispatcher->set_frontend(midi_frontend.get());
-
+    
 #ifdef SUSHI_BUILD_WITH_RPC_INTERFACE
     auto rpc_server = std::make_unique<sushi_rpc::GrpcServer>(grpc_listening_address, controller.get());
 #endif
@@ -487,8 +495,9 @@ int main(int argc, char* argv[])
 
     audio_frontend->run();
     event_dispatcher->run();
+    // /* debug
     midi_frontend->run();
-
+    
     if (frontend_type == FrontendType::JACK || frontend_type == FrontendType::XENOMAI_RASPA)
     {
         osc_frontend->run();
@@ -516,7 +525,9 @@ int main(int argc, char* argv[])
     if (frontend_type == FrontendType::JACK || frontend_type == FrontendType::XENOMAI_RASPA)
     {
         osc_frontend->stop();
+        // /* debug
         midi_frontend->stop();
+        
     }
 
 #ifdef SUSHI_BUILD_WITH_RPC_INTERFACE

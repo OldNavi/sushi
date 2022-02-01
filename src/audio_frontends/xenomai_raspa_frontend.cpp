@@ -78,15 +78,36 @@ AudioFrontendStatus XenomaiRaspaFrontend::init(BaseAudioFrontendConfiguration* c
         SUSHI_LOG_ERROR("Raspa has invalid sample rate of 0.");
         return AudioFrontendStatus::AUDIO_HW_ERROR;
     }
+    raspa_set_sample_rate(_engine->sample_rate());
 
     if (_engine->sample_rate() != raspa_sample_rate)
     {
         SUSHI_LOG_WARNING("Sample rate mismatch between engine ({}) and Raspa ({})", _engine->sample_rate(), raspa_sample_rate);
-        _engine->set_sample_rate(raspa_sample_rate);
+        // SUSHI_LOG_WARNING("Setting Raspa rate to engine rate {}",_engine->sample_rate());
+        // _engine->set_sample_rate(raspa_sample_rate);
     }
     _engine->set_output_latency(std::chrono::microseconds(raspa_get_output_latency()));
 
     return AudioFrontendStatus::OK;
+}
+
+void XenomaiRaspaFrontend::adjust_rate()
+{
+        auto raspa_sample_rate = raspa_get_sampling_rate();
+    if (raspa_sample_rate == 0)
+    {
+        SUSHI_LOG_ERROR("Raspa has invalid sample rate of 0.");
+        return;
+    }
+
+    if (_engine->sample_rate() != raspa_sample_rate)
+    {
+        SUSHI_LOG_WARNING("Sample rate mismatch between engine ({}) and Raspa ({})", _engine->sample_rate(), raspa_sample_rate);
+        SUSHI_LOG_WARNING("Setting Raspa rate to engine rate {}",_engine->sample_rate());
+        raspa_set_sample_rate(_engine->sample_rate());
+        // _engine->set_sample_rate(raspa_sample_rate);
+    }
+    _engine->set_output_latency(std::chrono::microseconds(raspa_get_output_latency()));
 }
 
 void XenomaiRaspaFrontend::cleanup()

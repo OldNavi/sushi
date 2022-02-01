@@ -68,6 +68,7 @@ public:
         return static_cast<XenomaiRaspaFrontend*>(data)->_internal_process_callback(input, output);
     }
 
+    void adjust_rate();
     /**
      * @brief Call to clean up resources and release ports
      */
