@@ -27,13 +27,21 @@ constexpr auto DEFAULT_NAME = "sushi.testing.sample_delay";
 constexpr auto DEFAULT_LABEL = "Sample delay";
 
 SampleDelayPlugin::SampleDelayPlugin(HostControl host_control) : InternalPlugin(host_control),
-                                                                 _write_idx(0),
-                                                                 _read_idx(0)
+                                                                 _write_idx_ch1(0),
+                                                                 _read_idx_ch1(0),
+                                                                 _write_idx_ch2(0),
+                                                                 _read_idx_ch2(0)
 {
     Processor::set_name(DEFAULT_NAME);
     Processor::set_label(DEFAULT_LABEL);
-    _sample_delay = register_int_parameter("sample_delay", 
-                                           "Sample delay", 
+    _sample_delay_ch1 = register_int_parameter("sample_delay_ch1", 
+                                           "Sample delay Channel 1", 
+                                           "samples", 
+                                           0,
+                                           0,
+                                           MAX_DELAY - 1);
+    _sample_delay_ch2 = register_int_parameter("sample_delay_ch2", 
+                                           "Sample delay Channel 2", 
                                            "samples", 
                                            0,
                                            0,
@@ -47,16 +55,17 @@ SampleDelayPlugin::SampleDelayPlugin(HostControl host_control) : InternalPlugin(
 void SampleDelayPlugin::process_audio(const ChunkSampleBuffer &in_buffer, ChunkSampleBuffer &out_buffer)
 {
     // update delay value
-    _read_idx = (_write_idx + MAX_DELAY - _sample_delay->processed_value()) % MAX_DELAY;
+    _read_idx_ch1 = (_write_idx_ch1 + MAX_DELAY - _sample_delay_ch1->processed_value()) % MAX_DELAY;
+    _read_idx_ch2 = (_write_idx_ch2 + MAX_DELAY - _sample_delay_ch2->processed_value()) % MAX_DELAY;
 
     // process
     if (_bypassed == false)
     {
-        int n_channels = std::min(in_buffer.channel_count(), out_buffer.channel_count());
+        int n_channels = std::min(std::min(in_buffer.channel_count(), out_buffer.channel_count()),DEFAULT_CHANNELS);
         for (int channel_idx = 0; channel_idx < n_channels; channel_idx++)
         {
-            int temp_write_idx = _write_idx;
-            int temp_read_idx = _read_idx;
+            int temp_write_idx = channel_idx % 2 ? _write_idx_ch2 : _write_idx_ch1;
+            int temp_read_idx =  channel_idx % 2 ? _read_idx_ch2 : _read_idx_ch1;
             for (int sample_idx = 0; sample_idx < AUDIO_CHUNK_SIZE; sample_idx++)
             {
                 _delaylines[channel_idx][temp_write_idx] = in_buffer.channel(channel_idx)[sample_idx];
@@ -67,10 +76,14 @@ void SampleDelayPlugin::process_audio(const ChunkSampleBuffer &in_buffer, ChunkS
                 temp_read_idx %= MAX_DELAY;
             }
         }
-        _write_idx += AUDIO_CHUNK_SIZE;
-        _read_idx += AUDIO_CHUNK_SIZE;
-        _write_idx %= MAX_DELAY;
-        _read_idx %= MAX_DELAY;
+        _write_idx_ch1 += AUDIO_CHUNK_SIZE;
+        _write_idx_ch2 += AUDIO_CHUNK_SIZE;
+        _read_idx_ch1 += AUDIO_CHUNK_SIZE;
+        _read_idx_ch2 += AUDIO_CHUNK_SIZE;
+        _write_idx_ch1 %= MAX_DELAY;
+        _write_idx_ch2 %= MAX_DELAY;
+        _read_idx_ch1 %= MAX_DELAY;
+        _read_idx_ch2 %= MAX_DELAY;
     }
     else
     {

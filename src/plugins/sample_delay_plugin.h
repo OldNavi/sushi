@@ -43,11 +43,14 @@ public:
 
 private:
     // Input parameters
-    IntParameterValue* _sample_delay;
+    IntParameterValue* _sample_delay_ch1;
+    IntParameterValue* _sample_delay_ch2;
     
     // Delayline data
-    int _write_idx;
-    int _read_idx;
+    int _write_idx_ch1;
+    int _read_idx_ch1;
+    int _write_idx_ch2;
+    int _read_idx_ch2;
     std::vector<std::array<float, MAX_DELAY>> _delaylines;
 };
 

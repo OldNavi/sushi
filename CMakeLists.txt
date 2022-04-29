@@ -184,6 +184,7 @@ set(COMPILATION_UNITS src/main.cpp
                       src/plugins/wav_writer_plugin.cpp
                       src/plugins/mono_summing_plugin.cpp
                       src/plugins/stereo_mixer_plugin.cpp
+                      src/plugins/gate_plugin.cpp
                       src/audio_frontends/offline_frontend.cpp
         )
 
@@ -359,7 +360,7 @@ set(INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/src"
 
 if (${WITH_XENOMAI})
     # explicitly link with cobalt lib
-    set(XENOMAI_BASE_DIR "/opt/evl" CACHE STRING "xenomai base dir path")
+    set(XENOMAI_BASE_DIR "/usr/local" CACHE STRING "xenomai base dir path")
 
     if(NOT "$ENV{CMAKE_SYSROOT}" STREQUAL "")
         set(CMAKE_SYSROOT "$ENV{CMAKE_SYSROOT}")
