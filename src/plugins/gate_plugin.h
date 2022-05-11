@@ -29,6 +29,14 @@
 #define OPENED 3
 #define DECAY 4
 
+constexpr float THRESHOLD_DEFAULT = -70.0f;
+constexpr float ATTACK_DEFAULT = 30.0f;
+constexpr float HOLD_DEFAULT = 500.0f;
+constexpr float DECAY_DEFAULT = 1000.0f;
+constexpr float RANGE_DEFAULT = -90.0f;
+constexpr float SAMPLE_RATE_DEFAULT = 44100;
+constexpr float DEFAULT_REFRESH_RATE = 12.5f;
+
 namespace sushi {
 namespace gate_plugin {
 
@@ -47,9 +55,15 @@ public:
 
     void set_input_channels(int channels) override;
 
+    void process_event(const RtEvent& event) override;
+
     void process_audio(const ChunkSampleBuffer &in_buffer, ChunkSampleBuffer &out_buffer) override;
 
 private:
+    void init_values();
+    void _update_refresh_interval(float rate, float sample_rate);
+    void _process_updates();
+
     float _sample_rate;
     int state[MAX_CHANNELS_SUPPORTED];
     float gate[MAX_CHANNELS_SUPPORTED];
@@ -60,6 +74,24 @@ private:
     FloatParameterValue* _hold;
     FloatParameterValue* _decay;
     FloatParameterValue* _range;
+    FloatParameterValue* _update_rate_parameter;
+    BoolParameterValue*  _gate_status[MAX_CHANNELS_SUPPORTED];
+
+    ObjectId _threshold_id;
+    ObjectId _attack_id;
+    ObjectId _hold_id;
+    ObjectId _decay_id;
+    ObjectId _range_id;
+    ObjectId _update_rate_id;
+
+    float threshold_value;
+    float attack_coef;
+    int hold_samples;
+    float decay_coef;
+    float range_coef;
+
+    int _refresh_interval;
+    int _sample_count{0};
 
 };
 
