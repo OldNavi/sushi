@@ -39,6 +39,12 @@ namespace sushi {
 #define SUSHI_EVENT_CACHE_ALIGNMENT 32
 #endif
 
+class RtEvent;
+inline bool is_keyboard_event(const RtEvent& event);
+inline bool is_engine_control_event(const RtEvent& event);
+inline bool is_returnable_event(const RtEvent& event);
+
+
 /**
  * List of realtime message types
  */
@@ -60,8 +66,10 @@ enum class RtEventType
     DATA_PROPERTY_CHANGE,
     STRING_PROPERTY_CHANGE,
     SET_BYPASS,
+    SET_STATE,
+    DELETE,
+    NOTIFY,
     /* Engine commands */
-    STOP_ENGINE,
     TEMPO,
     TIME_SIGNATURE,
     PLAYING_MODE,
@@ -83,11 +91,10 @@ enum class RtEventType
     ADD_GATE_CONNECTION,
     REMOVE_GATE_CONNECTION,
     /* Delete object event */
-    STRING_DELETE,
     BLOB_DELETE,
-    VOID_DELETE,
     /* Synchronisation events */
     SYNC,
+    TIMING_TICK,
     /* Engine notification events */
     CLIP_NOTIFICATION,
 };
@@ -296,18 +303,19 @@ public:
     PropertyChangeRtEvent(ObjectId processor,
                           int offset,
                           ObjectId param_id,
-                          std::string* value) : BaseRtEvent(RtEventType::STRING_PROPERTY_CHANGE,
-                                                                   processor,
-                                                                   offset),
-                                                _data(value),
-                                                _param_id(param_id) {}
+                          RtDeletableWrapper<std::string>* value) : BaseRtEvent(RtEventType::STRING_PROPERTY_CHANGE,
+                                                                                processor,
+                                                                                offset),
+                                                                   _data(value),
+                                                                   _param_id(param_id) {}
 
     ObjectId param_id() const {return _param_id;}
 
-    std::string* value() const {return _data;}
+    std::string* value() const {return &_data->data();}
+    RtDeletable* deletable_value() const {return _data;}
 
 protected:
-    std::string* _data;
+    RtDeletableWrapper<std::string>* _data;
     ObjectId _param_id;
 };
 
@@ -351,6 +359,45 @@ public:
 private:
     int _value;
 };
+
+class RtState;
+/**
+ * @brief Class for binarydata parameter changes
+ */
+class ProcessorStateRtEvent : public BaseRtEvent
+{
+public:
+    ProcessorStateRtEvent(ObjectId processor,
+                          RtState* state) : BaseRtEvent(RtEventType::SET_STATE, processor, 0),
+                                            _state(state) {}
+
+    RtState* state() const {return _state;}
+
+protected:
+    RtState* _state;
+};
+
+/**
+ * @brief Class for sending notifications from the rt thread of a processor
+ */
+class ProcessorNotifyRtEvent : public BaseRtEvent
+{
+public:
+    enum class Action
+    {
+        PARAMETER_UPDATE
+    };
+    ProcessorNotifyRtEvent(ObjectId processor,
+                           Action action) : BaseRtEvent(RtEventType::NOTIFY, processor, 0),
+                                            _action(action) {}
+
+    Action action() const {return _action;}
+
+protected:
+    Action _action;
+};
+
+
 /**
  * @brief Baseclass for events that can be returned with a status code.
  */
@@ -551,6 +598,19 @@ protected:
     SyncMode _mode;
 };
 
+/* RtEvent for sending transport timing ticks for tempo sync */
+class TimingTickRtEvent : public BaseRtEvent
+{
+public:
+    TimingTickRtEvent(int offset, int tick_count) : BaseRtEvent(RtEventType::TIMING_TICK, 0, offset),
+                                                    _tick_count(tick_count) {}
+
+    int tick_count() const {return _tick_count;}
+protected:
+    int _tick_count;
+};
+
+
 /* RtEvent for notifing the engine of audio clipping in the realtime */
 class ClipNotificationRtEvent : public BaseRtEvent
 {
@@ -572,6 +632,22 @@ public:
 private:
     int _channel;
     ClipChannelType _channel_type;
+};
+
+/**
+ * @brief Class for passing deletable data out from the rt domain
+ */
+class DeleteDataRtEvent : public BaseRtEvent
+{
+public:
+    DeleteDataRtEvent(RtDeletable* data) : BaseRtEvent(RtEventType::DELETE, 0, 0),
+                                           _data(data)
+    {}
+
+    RtDeletable* data() const {return _data;}
+
+private:
+    RtDeletable* _data;
 };
 
 /**
@@ -648,18 +724,30 @@ public:
         return &_processor_command_event;
     }
 
+    const ProcessorStateRtEvent* processor_state_event() const
+    {
+        assert(_processor_state_event.type() == RtEventType::SET_STATE);
+        return &_processor_state_event;
+    }
+
+    const ProcessorNotifyRtEvent* processor_notify_event() const
+    {
+        assert(_processor_notify_event.type() == RtEventType::NOTIFY);
+        return &_processor_notify_event;
+    }
+
     // ReturnableEvent and every event type that inherits from it
     // needs a non-const accessor function as well
 
     const ReturnableRtEvent* returnable_event() const
     {
-        assert(_returnable_event.type() >= RtEventType::STOP_ENGINE);
+        assert(is_returnable_event(*this));
         return &_returnable_event;
     }
 
     ReturnableRtEvent* returnable_event()
     {
-        assert(_returnable_event.type() >= RtEventType::STOP_ENGINE);
+        assert(is_returnable_event(*this));
         return &_returnable_event;
     }
 
@@ -745,11 +833,8 @@ public:
 
     const DataPayloadRtEvent* data_payload_event() const
     {
-        assert(_data_payload_event.type() == RtEventType::STRING_DELETE ||
-               _data_payload_event.type() == RtEventType::BLOB_DELETE ||
-               _data_payload_event.type() == RtEventType::VOID_DELETE );
+        assert(_data_payload_event.type() == RtEventType::BLOB_DELETE);
         return &_data_payload_event;
-
     }
 
     const SynchronisationRtEvent* syncronisation_event() const
@@ -782,10 +867,22 @@ public:
         return &_sync_mode_event;
     }
 
+    const TimingTickRtEvent* timing_tick_event() const
+    {
+        assert(_timing_tick_event.type() == RtEventType::TIMING_TICK);
+        return &_timing_tick_event;
+    }
+
     const ClipNotificationRtEvent* clip_notification_event() const
     {
         assert(_clip_notification_event.type() == RtEventType::CLIP_NOTIFICATION);
         return &_clip_notification_event;
+    }
+
+    const DeleteDataRtEvent* delete_data_event() const
+    {
+        assert(_delete_data_event.type() == RtEventType::DELETE);
+        return &_delete_data_event;
     }
 
 
@@ -856,7 +953,7 @@ public:
         return RtEvent(typed_event);
     }
 
-    static RtEvent make_string_property_change_event(ObjectId target, int offset, ObjectId param_id, std::string* value)
+    static RtEvent make_string_property_change_event(ObjectId target, int offset, ObjectId param_id, RtDeletableWrapper<std::string>* value)
     {
         PropertyChangeRtEvent typed_event(target, offset, param_id, value);
         return RtEvent(typed_event);
@@ -874,9 +971,15 @@ public:
         return RtEvent(typed_event);
     }
 
-    static RtEvent make_stop_engine_event()
+    static RtEvent make_set_rt_state_event(ObjectId target, RtState* state)
     {
-        ReturnableRtEvent typed_event(RtEventType::STOP_ENGINE, 0);
+        ProcessorStateRtEvent typed_event(target, state);
+        return RtEvent(typed_event);
+    }
+
+    static RtEvent make_processor_notify_event(ObjectId target, ProcessorNotifyRtEvent::Action action)
+    {
+        ProcessorNotifyRtEvent typed_event(target, action);
         return RtEvent(typed_event);
     }
 
@@ -1002,21 +1105,9 @@ public:
         return typed_event;
     }
 
-    static RtEvent make_delete_string_event(std::string* string)
-    {
-        DataPayloadRtEvent typed_event(RtEventType::STRING_DELETE, 0, 0, {0, reinterpret_cast<uint8_t*>(string)});
-        return typed_event;
-    }
-
     static RtEvent make_delete_blob_event(BlobData data)
     {
         DataPayloadRtEvent typed_event(RtEventType::BLOB_DELETE, 0, 0, data);
-        return typed_event;
-    }
-
-    static RtEvent make_delete_void_event(void* data)
-    {
-        DataPayloadRtEvent typed_event(RtEventType::VOID_DELETE, 0, 0, {0, reinterpret_cast<uint8_t*>(data)});
         return typed_event;
     }
 
@@ -1050,12 +1141,23 @@ public:
         return typed_event;
     }
 
+    static RtEvent make_timing_tick_event(int offset, int tick_count)
+    {
+        TimingTickRtEvent typed_event(offset, tick_count);
+        return typed_event;
+    }
+
     static RtEvent make_clip_notification_event(int offset, int channel, ClipNotificationRtEvent::ClipChannelType type)
     {
         ClipNotificationRtEvent typed_event(offset, channel, type);
         return typed_event;
     }
 
+    static RtEvent make_delete_data_event(RtDeletable* data)
+    {
+        DeleteDataRtEvent typed_event(data);
+        return typed_event;
+    }
 
 private:
     /* Private constructors that are invoked automatically when using the make_xxx_event functions */
@@ -1068,6 +1170,8 @@ private:
     RtEvent(const PropertyChangeRtEvent& e)             : _property_change_event(e) {}
     RtEvent(const DataPropertyChangeRtEvent& e)         : _data_property_change_event(e) {}
     RtEvent(const ProcessorCommandRtEvent& e)           : _processor_command_event(e) {}
+    RtEvent(const ProcessorStateRtEvent& e)             : _processor_state_event(e) {}
+    RtEvent(const ProcessorNotifyRtEvent& e)            : _processor_notify_event(e) {}
     RtEvent(const ReturnableRtEvent& e)                 : _returnable_event(e) {}
     RtEvent(const ProcessorOperationRtEvent& e)         : _processor_operation_event(e) {}
     RtEvent(const ProcessorReorderRtEvent& e)           : _processor_reorder_event(e) {}
@@ -1083,6 +1187,8 @@ private:
     RtEvent(const PlayingModeRtEvent& e)                : _playing_mode_event(e) {}
     RtEvent(const SyncModeRtEvent& e)                   : _sync_mode_event(e) {}
     RtEvent(const ClipNotificationRtEvent& e)           : _clip_notification_event(e) {}
+    RtEvent(const DeleteDataRtEvent& e)                 : _delete_data_event(e) {}
+    RtEvent(const TimingTickRtEvent& e)                 : _timing_tick_event(e) {}
     /* Data storage */
     union
     {
@@ -1096,6 +1202,8 @@ private:
         PropertyChangeRtEvent         _property_change_event;
         DataPropertyChangeRtEvent     _data_property_change_event;
         ProcessorCommandRtEvent       _processor_command_event;
+        ProcessorStateRtEvent         _processor_state_event;
+        ProcessorNotifyRtEvent        _processor_notify_event;
         ReturnableRtEvent             _returnable_event;
         ProcessorOperationRtEvent     _processor_operation_event;
         ProcessorReorderRtEvent       _processor_reorder_event;
@@ -1111,6 +1219,8 @@ private:
         PlayingModeRtEvent            _playing_mode_event;
         SyncModeRtEvent               _sync_mode_event;
         ClipNotificationRtEvent       _clip_notification_event;
+        DeleteDataRtEvent             _delete_data_event;
+        TimingTickRtEvent             _timing_tick_event;
     };
 };
 
@@ -1125,13 +1235,31 @@ static_assert(std::is_trivially_copyable<RtEvent>::value);
  * @param event The event to test
  * @return true if the event is a keyboard event, false otherwise.
  */
-static inline bool is_keyboard_event(const RtEvent event)
+inline bool is_keyboard_event(const RtEvent& event)
 {
-    if (event.type() >= RtEventType::NOTE_ON && event.type() <= RtEventType::WRAPPED_MIDI_EVENT)
-    {
-        return true;
-    }
-    return false;
+    return event.type() >= RtEventType::NOTE_ON && event.type() <= RtEventType::WRAPPED_MIDI_EVENT;
+}
+
+/**
+ * @brief Convenience function to encapsulate the logic to determine if an event is only for
+ *        internal engine control or if it can be passed to processor instances
+ * @param event The event to test
+ * @return true if the event is only for internal engine use.
+ */
+inline bool is_engine_control_event(const RtEvent& event)
+{
+    return event.type() >= RtEventType::TEMPO;
+}
+
+/**
+ * @brief Convenience function to encapsulate the logic to determine if the event is
+ *        returnable with a status code
+ * @param event The event to test
+ * @return true if the event can be converted to ReturnableRtEvent
+ */
+inline bool is_returnable_event(const RtEvent& event)
+{
+    return event.type() >= RtEventType::INSERT_PROCESSOR && event.type() <= RtEventType::REMOVE_GATE_CONNECTION;
 }
 
 } // namespace sushi

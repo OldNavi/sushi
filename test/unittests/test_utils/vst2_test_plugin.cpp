@@ -24,9 +24,12 @@ constexpr std::array<const char*, 2> PARAM_NAMES = {PARAM_1, PARAM_2};
 constexpr uint8_t NOTE_OFF_PREFIX   = 0b10000000;
 constexpr uint8_t NOTE_ON_PREFIX    = 0b10010000;
 
-Vst2TestPlugin::Vst2TestPlugin(audioMasterCallback audioMaster) : AudioEffectX(audioMaster, 1, 1),
+Vst2TestPlugin::Vst2TestPlugin(audioMasterCallback audioMaster) : AudioEffectX(audioMaster,
+                                                                               PROGRAM_NAMES.size(),
+                                                                               PARAM_NAMES.size()),
                                                                   _parameters{{1.0f, 1.0f}},
                                                                   _program_no{0},
+                                                                  _frequency{0.01},
                                                                   _phase{0},
                                                                   _playing{false}
 {
@@ -34,10 +37,8 @@ Vst2TestPlugin::Vst2TestPlugin(audioMasterCallback audioMaster) : AudioEffectX(a
     setNumOutputs(2);
     setUniqueID(1234);
     canProcessReplacing();
-    canDoubleReplacing();
     isSynth(true);
-    this->cEffect.numPrograms = PROGRAM_NAMES.size();
-    this->cEffect.numParams = MAX_PARAMS;
+    programsAreChunks(false);
 }
 
 Vst2TestPlugin::~Vst2TestPlugin() = default;

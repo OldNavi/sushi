@@ -62,24 +62,24 @@ public:
     void reset_input_buffer();
     void reset_output_buffer();
 
-    PortFlow flow();
+    PortFlow flow() const;
 
-    PortType type();
+    PortType type() const;
 
     const LilvPort* lilv_port();
 
-    float min();
-    float max();
+    float min() const;
+    float max() const;
 
     lv2_host::LV2_Evbuf* evbuf();
 
     void set_control_value(float c);
 
-    float control_value();
+    float control_value() const;
 
     float* control_pointer();
 
-    bool optional();
+    bool optional() const;
 
 private:
     /**
@@ -95,8 +95,6 @@ private:
 
     lv2_host::LV2_Evbuf* _evbuf{nullptr}; // For MIDI ports, otherwise NULL
 
-    void* _widget; // Control widget, if applicable
-    int _buf_size{0}; // Custom buffer size, or 0
     int _index;
 
     // For ranges. Only used in control ports.
@@ -113,6 +111,6 @@ private:
 } // end namespace sushi
 
 
-#endif //SUSHI_BUILD_WITH_LV2
+#endif // SUSHI_BUILD_WITH_LV2
 
-#endif //SUSHI_LV2_MODEL_H
+#endif // SUSHI_LV2_PORT_H

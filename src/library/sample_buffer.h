@@ -33,6 +33,17 @@ constexpr int LEFT_CHANNEL_INDEX = 0;
 constexpr int RIGHT_CHANNEL_INDEX = 1;
 
 template<int size>
+class SampleBuffer;
+
+template<int size>
+void swap(SampleBuffer<size>& lhs, SampleBuffer<size>& rhs)
+{
+    std::swap(lhs._channel_count, rhs._channel_count);
+    std::swap(lhs._own_buffer, rhs._own_buffer);
+    std::swap(lhs._buffer, rhs._buffer);
+}
+
+template<int size>
 class SampleBuffer
 {
 public:
@@ -201,7 +212,6 @@ public:
         buffer._own_buffer = false;
         buffer._channel_count = number_of_channels;
         buffer._buffer = data + size * start_channel;
-        buffer._buffer = data;
         return buffer;
     }
 
@@ -594,6 +604,8 @@ private:
     int _channel_count;
     bool _own_buffer;
     float* _buffer;
+
+    friend void swap<>(SampleBuffer<size>& lhs, SampleBuffer<size>& rhs);
 };
 
 typedef SampleBuffer<AUDIO_CHUNK_SIZE> ChunkSampleBuffer;

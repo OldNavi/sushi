@@ -21,6 +21,7 @@ using namespace sushi;
 using namespace sushi::lv2;
 
 constexpr float TEST_SAMPLE_RATE = 48000;
+constexpr int   TEST_CHANNEL_COUNT = 2;
 
 // Tip: use 'test_utils::print_buffer<64>(out_buffer, 1)'
 // to generate static buffer content in text like the below.
@@ -69,6 +70,7 @@ static const float LV2_SAMPLER_EXPECTED_OUT_NOTE_OFF[1][64] = {
 class TestLv2Wrapper : public ::testing::Test
 {
 protected:
+    using ::testing::Test::SetUp; // Hide error of hidden overload of virtual function in clang when signatures differ but the name is the same
     TestLv2Wrapper()
     {
     }
@@ -91,6 +93,8 @@ protected:
         {
             _module_under_test->set_event_output(&_fifo);
             _module_under_test->set_enabled(true);
+            _module_under_test->set_input_channels(std::min(TEST_CHANNEL_COUNT, _module_under_test->max_input_channels()));
+            _module_under_test->set_output_channels(std::min(TEST_CHANNEL_COUNT, _module_under_test->max_output_channels()));
         }
 
         return ret;
@@ -104,8 +108,8 @@ protected:
     RtSafeRtEventFifo _fifo;
 
     HostControlMockup _host_control;
-    std::shared_ptr<LilvWorldWrapper> _world{nullptr};
-    std::unique_ptr<LV2_Wrapper> _module_under_test{nullptr};
+    std::shared_ptr<LilvWorldWrapper> _world;
+    std::unique_ptr<LV2_Wrapper> _module_under_test;
 };
 
 TEST_F(TestLv2Wrapper, TestLV2PluginInvalidURI)
@@ -306,7 +310,7 @@ TEST_F(TestLv2Wrapper, TestSynchronousStateAndWorkerThreads)
     _module_under_test->process_event(RtEvent::make_note_off_event(0, 0, 0, 60, 1.0f));
     _module_under_test->process_audio(in_buffer, out_buffer);
 
-    if(AUDIO_CHUNK_SIZE == 64)
+    if (AUDIO_CHUNK_SIZE == 64)
     {
         // Increment channels to 2 when supporting stereo loading of mono plugins.
         test_utils::compare_buffers(LV2_SAMPLER_EXPECTED_OUT_NOTE_OFF, out_buffer, 1, 0.0001f);
@@ -514,6 +518,75 @@ TEST_F(TestLv2Wrapper, TestSynth)
 
     _module_under_test->process_event(RtEvent::make_note_off_event(0, 0, 0, 60, 1.0f));
     _module_under_test->process_audio(in_buffer, out_buffer);
+}
+
+TEST_F(TestLv2Wrapper, TestStateHandling)
+{
+    auto ret = SetUp("http://lv2plug.in/plugins/eg-amp");
+    ASSERT_EQ(ProcessorReturnCode::OK, ret);
+
+    auto desc = _module_under_test->parameter_from_name("Gain");
+    ASSERT_TRUE(desc);
+
+    ProcessorState state;
+    state.set_bypass(true);
+    state.set_program(2);
+    state.add_parameter_change(desc->id(), 0.25);
+
+    auto status = _module_under_test->set_state(&state, false);
+    ASSERT_EQ(ProcessorReturnCode::OK, status);
+
+    // Check that new values are set and update notification is queued
+    EXPECT_FLOAT_EQ(0.25f, _module_under_test->parameter_value(desc->id()).second);
+    EXPECT_TRUE(_module_under_test->bypassed());
+    auto event = _host_control._dummy_dispatcher.retrieve_event();
+    ASSERT_TRUE(event->is_engine_notification());
+
+    // Test with realtime set to true
+    state.set_bypass(false);
+    state.set_program(1);
+    state.add_parameter_change(desc->id(), 0.50);
+
+    status = _module_under_test->set_state(&state, true);
+    ASSERT_EQ(ProcessorReturnCode::OK, status);
+    event = _host_control._dummy_dispatcher.retrieve_event();
+    ASSERT_TRUE(event.get());
+    _module_under_test->process_event(event->to_rt_event(0));
+
+    // Check that new values are set
+    EXPECT_FLOAT_EQ(0.5f, _module_under_test->parameter_value(desc->id()).second);
+    EXPECT_FALSE(_module_under_test->bypassed());
+}
+
+TEST_F(TestLv2Wrapper, TestBinaryStateSaving)
+{
+    ChunkSampleBuffer buffer(2);
+
+    auto ret = SetUp("http://lv2plug.in/plugins/eg-amp");
+    ASSERT_EQ(ProcessorReturnCode::OK, ret);
+
+    // Ugly hack to simulate audio not running.
+    _module_under_test->_model->set_play_state(PlayState::PAUSED);
+
+    auto desc = _module_under_test->parameter_from_name("Gain");
+    ASSERT_TRUE(desc);
+    float prev_value = _module_under_test->parameter_value(desc->id()).second;
+
+    ProcessorState state = _module_under_test->save_state();
+    ASSERT_TRUE(state.has_binary_data());
+
+    // Set a parameter value, the re-apply the state
+    auto rt_event = RtEvent::make_parameter_change_event(_module_under_test->id(), 0, desc->id(), 0.1234f);
+    _module_under_test->process_event(rt_event);
+    _module_under_test->process_audio(buffer, buffer);
+
+    EXPECT_NE(prev_value, _module_under_test->parameter_value(desc->id()).second);
+
+    auto status = _module_under_test->set_state(&state, false);
+    ASSERT_EQ(ProcessorReturnCode::OK, status);
+
+    // Check the value has reverted to the previous value
+    EXPECT_FLOAT_EQ(prev_value, _module_under_test->parameter_value(desc->id()).second);
 }
 
 #endif //SUSHI_BUILD_WITH_LV2_MDA_TESTS

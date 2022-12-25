@@ -1,16 +1,13 @@
-#include <algorithm>
 #include <thread>
 
 #include "gtest/gtest.h"
 
-#include "test_utils/test_utils.h"
 #include "engine/transport.h"
 
 #define private public
 #define protected public
 
 #include "engine/audio_graph.cpp"
-#include "test_utils/dummy_processor.h"
 #include "test_utils/host_control_mockup.h"
 
 constexpr float SAMPLE_RATE = 44000;
@@ -22,6 +19,7 @@ using namespace sushi::engine;
 class TestAudioGraph : public ::testing::Test
 {
 protected:
+    using ::testing::Test::SetUp; // Hide error of hidden overload of virtual function in clang when signatures differ but the name is the same
     TestAudioGraph() {}
 
     void SetUp(int cores)
@@ -32,8 +30,8 @@ protected:
     HostControlMockup             _hc;
     std::unique_ptr<AudioGraph>   _module_under_test;
     performance::PerformanceTimer _timer;
-    Track                         _track_1{_hc.make_host_control_mockup(SAMPLE_RATE), 2, &_timer};
-    Track                         _track_2{_hc.make_host_control_mockup(SAMPLE_RATE), 2, &_timer};
+    Track _track_1{_hc.make_host_control_mockup(SAMPLE_RATE), 2, &_timer};
+    Track _track_2{_hc.make_host_control_mockup(SAMPLE_RATE), 2, &_timer};
 };
 
 TEST_F(TestAudioGraph, TestSingleCoreOperation)

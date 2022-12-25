@@ -33,13 +33,6 @@
 
 #include "lv2_worker.h"
 
-namespace
-{
-
-static constexpr int LV2_STRING_BUFFER_SIZE = 256;
-
-} // anonymous namespace
-
 namespace sushi {
 namespace lv2 {
 
@@ -83,11 +76,13 @@ LV2_Wrapper::LV2_Wrapper(HostControl host_control,
 
 ProcessorReturnCode LV2_Wrapper::init(float sample_rate)
 {
+    _control_output_refresh_interval = static_cast<int>(std::round(sample_rate / CONTROL_OUTPUT_REFRESH_RATE));
+
     _model = std::make_unique<Model>(sample_rate, this, _world->world());
 
     _lv2_pos = reinterpret_cast<LV2_Atom*>(pos_buf);
 
-    auto library_handle = _plugin_handle_from_URI(_plugin_path.c_str());
+    auto library_handle = _plugin_handle_from_URI(_plugin_path);
 
     if (library_handle == nullptr)
     {
@@ -105,8 +100,6 @@ ProcessorReturnCode LV2_Wrapper::init(float sample_rate)
     // Channel setup derived from ports:
     _max_input_channels = _model->input_audio_channel_count();
     _max_output_channels = _model->output_audio_channel_count();
-    _current_input_channels = _max_input_channels;
-    _current_output_channels = _max_output_channels;
 
     _fetch_plugin_name_and_label();
 
@@ -205,12 +198,12 @@ std::pair<ProcessorReturnCode, float> LV2_Wrapper::parameter_value_in_domain(Obj
 
 std::pair<ProcessorReturnCode, std::string> LV2_Wrapper::parameter_value_formatted(ObjectId parameter_id) const
 {
-    auto valueTuple = parameter_value_in_domain(parameter_id);
+    auto value_tuple = parameter_value_in_domain(parameter_id);
 
-    if(valueTuple.first == ProcessorReturnCode::OK)
+    if (value_tuple.first == ProcessorReturnCode::OK)
     {
-        std::string parsedValue = std::to_string(valueTuple.second);
-        return {ProcessorReturnCode::OK, parsedValue};
+        std::string parsed_value = std::to_string(value_tuple.second);
+        return {ProcessorReturnCode::OK, parsed_value};
     }
 
     return {ProcessorReturnCode::PARAMETER_NOT_FOUND, ""};
@@ -287,43 +280,141 @@ ProcessorReturnCode LV2_Wrapper::set_program(int program)
     return ProcessorReturnCode::UNSUPPORTED_OPERATION;
 }
 
+ProcessorReturnCode LV2_Wrapper::set_state(ProcessorState* state, bool realtime_running)
+{
+    if (state->has_binary_data())
+    {
+        _set_binary_state(state);
+        return ProcessorReturnCode::OK;
+    }
+
+    std::unique_ptr<RtState> rt_state;
+    if (realtime_running)
+    {
+        rt_state = std::make_unique<RtState>();
+    }
+
+    if (state->program().has_value())
+    {
+        this->set_program(state->program().value());
+    }
+
+    if (state->bypassed().has_value())
+    {
+        if (realtime_running)
+        {
+            rt_state->set_bypass(state->bypassed().value());
+        }
+        else
+        {
+            _bypass_manager.set_bypass(state->bypassed().value(), _model->sample_rate());
+        }
+    }
+
+    for (const auto& param : state->parameters())
+    {
+        int id = param.first;
+        float value = param.second;
+
+        auto parameter = parameter_from_id(id);
+
+        if (parameter)
+        {
+            auto port = _model->get_port(parameter->id());
+
+            float min = parameter->min_domain_value();
+            float max = parameter->max_domain_value();
+            auto value_in_domain = _to_domain(value, min, max);
+
+            // We can save some time for the audio thread if we do this pre-scaling here
+            // for the realtime case too, even though the values are applied during the
+            // next audio process call and not here.
+            if (realtime_running)
+            {
+                rt_state->add_parameter_change(parameter->id(), value_in_domain);
+            }
+            else
+            {
+                port->set_control_value(value_in_domain);
+            }
+        }
+    }
+
+    if (realtime_running)
+    {
+        auto event = new RtStateEvent(this->id(), std::move(rt_state), IMMEDIATE_PROCESS);
+        _host_control.post_event(event);
+    }
+    else
+    {
+        _host_control.post_event(new AudioGraphNotificationEvent(AudioGraphNotificationEvent::Action::PROCESSOR_UPDATED,
+                                                                 this->id(), 0, IMMEDIATE_PROCESS));
+    }
+
+    return ProcessorReturnCode::OK;
+}
+
+ProcessorState LV2_Wrapper::save_state() const
+{
+    ProcessorState state;
+    state.set_binary_data(_model->state()->save_binary_state());
+    return state;
+}
+
+PluginInfo LV2_Wrapper::info() const
+{
+    PluginInfo info;
+    info.type = PluginType::LV2;
+    info.path = _plugin_path;
+    return info;
+}
+
 bool LV2_Wrapper::_register_parameters()
 {
     bool param_inserted_ok = true;
 
     for (int _pi = 0; _pi < _model->port_count(); ++_pi)
     {
-        auto currentPort = _model->get_port(_pi);
+        auto current_port = _model->get_port(_pi);
 
-        if (currentPort->type() == PortType::TYPE_CONTROL)
+        if (current_port->type() == PortType::TYPE_CONTROL)
         {
             // Here I need to get the name of the port.
-            auto nameNode = lilv_port_get_name(_model->plugin_class(), currentPort->lilv_port());
-            int portIndex = lilv_port_get_index(_model->plugin_class(), currentPort->lilv_port());
+            auto name_node = lilv_port_get_name(_model->plugin_class(), current_port->lilv_port());
+            int port_index = lilv_port_get_index(_model->plugin_class(), current_port->lilv_port());
 
-            assert(portIndex == _pi); // This should only fail is the plugin's .ttl file is incorrect.
+            assert(port_index == _pi); // This should only fail is the plugin's .ttl file is incorrect.
 
-            const std::string name_as_string = lilv_node_as_string(nameNode);
-            const std::string param_unit = "";
+            const std::string name_as_string = lilv_node_as_string(name_node);
+            const std::string param_unit;
+
+            auto direction = Direction::AUTOMATABLE;
+
+            if (current_port->flow() == PortFlow::FLOW_OUTPUT)
+            {
+                direction = Direction::OUTPUT;
+                SUSHI_LOG_INFO("LV2 Plugin: {}, parameter: {} is output only, so not automatable.", name(), name_as_string);
+            }
 
             param_inserted_ok = register_parameter(new FloatParameterDescriptor(name_as_string, // name
-                    name_as_string, // label
-                    param_unit, // PARAMETER UNIT
-                    currentPort->min(), // range min
-                    currentPort->max(), // range max
-                    nullptr), // ParameterPreProcessor
-                    static_cast<ObjectId>(portIndex)); // Registering the ObjectID as the LV2 Port index.
+                                                                                name_as_string, // label
+                                                                                param_unit, // PARAMETER UNIT
+                                                                                current_port->min(), // range min
+                                                                                current_port->max(), // range max
+                                                                                direction,
+                                                                                nullptr), // ParameterPreProcessor
+                                                   static_cast<ObjectId>(port_index)); // Registering the ObjectID as the LV2 Port index.
 
             if (param_inserted_ok)
             {
-                SUSHI_LOG_DEBUG("Plugin: {}, registered param: {}", name(), name_as_string);
+                SUSHI_LOG_INFO("LV2 Plugin: {}, registered parameter: {}", name(), name_as_string);
             }
             else
             {
-                SUSHI_LOG_ERROR("Plugin: {}, Error while registering param: {}", name(), name_as_string);
+                SUSHI_LOG_ERROR("Plugin: {}, Error while registering parameter: {}", name(), name_as_string);
             }
 
-            lilv_node_free(nameNode);
+            lilv_node_free(name_node);
         }
     }
 
@@ -350,10 +441,10 @@ void LV2_Wrapper::process_event(const RtEvent& event)
 
         auto parameter = parameter_from_id(parameter_id);
 
-        const int portIndex = static_cast<int>(parameter_id);
-        assert(portIndex < _model->port_count());
+        const int port_index = static_cast<int>(parameter_id);
+        assert(port_index < _model->port_count());
 
-        auto port = _model->get_port(portIndex);
+        auto port = _model->get_port(port_index);
 
         auto value = typed_event->value();
 
@@ -370,10 +461,27 @@ void LV2_Wrapper::process_event(const RtEvent& event)
             SUSHI_LOG_DEBUG("Plugin: {}, MIDI queue Overflow!", name());
         }
     }
-    else if(event.type() == RtEventType::SET_BYPASS)
+    else if (event.type() == RtEventType::SET_BYPASS)
     {
         bool bypassed = static_cast<bool>(event.processor_command_event()->value());
         _bypass_manager.set_bypass(bypassed, _model->sample_rate());
+    }
+    else if (event.type() == RtEventType::SET_STATE)
+    {
+        auto state = event.processor_state_event()->state();
+        if (state->bypassed().has_value())
+        {
+            _bypass_manager.set_bypass(*state->bypassed(), _model->sample_rate());
+        }
+
+        for (const auto& parameter : state->parameters())
+        {
+            // These parameter values are pre-scaled and don't need to be converted to domain values
+            auto port = _model->get_port(parameter.first);
+            port->set_control_value(parameter.second);
+        }
+        async_delete(state);
+        notify_state_change_rt();
     }
 }
 
@@ -466,7 +574,7 @@ void LV2_Wrapper::process_audio(const ChunkSampleBuffer &in_buffer, ChunkSampleB
         lilv_instance_run(_model->plugin_instance(), AUDIO_CHUNK_SIZE);
 
         /* Process any worker replies. */
-        if(_model->state_worker() != nullptr)
+        if (_model->state_worker() != nullptr)
         {
             _model->state_worker()->emit_responses(_model->plugin_instance());
         }
@@ -487,21 +595,27 @@ void LV2_Wrapper::_restore_state_callback(EventId)
     /* Note that this doesn't handle multiple requests at once.
      * Currently for the Pause functionality it is fine,
      * but if extended to support other use it may note be. */
-    if(_model->state_to_set() != nullptr)
+
+    auto [state_to_set, delete_after_use] = _model->state_to_set();
+    if (state_to_set)
     {
         auto feature_list = _model->host_feature_list();
 
-        lilv_state_restore(_model->state_to_set(),
+        lilv_state_restore(state_to_set,
                            _model->plugin_instance(),
                            set_port_value,
                            _model.get(),
                            0,
                            feature_list->data());
 
-        _model->set_state_to_set(nullptr);
-
+        _model->set_state_to_set(nullptr, false);
         _model->request_update();
         _model->set_play_state(PlayState::RUNNING);
+
+        if (delete_after_use)
+        {
+            lilv_free(state_to_set);
+        }
     }
 }
 
@@ -590,7 +704,7 @@ void LV2_Wrapper::_deliver_outputs_from_plugin(bool /*send_ui_updates*/)
     {
         auto current_port = _model->get_port(p);
 
-        if(current_port->flow() == PortFlow::FLOW_OUTPUT)
+        if (current_port->flow() == PortFlow::FLOW_OUTPUT)
         {
             switch(current_port->type())
             {
@@ -605,6 +719,21 @@ void LV2_Wrapper::_deliver_outputs_from_plugin(bool /*send_ui_updates*/)
                             // TODO: Introduce latency compensation reporting to Sushi
                         }
                     }
+                    else
+                    {
+                        if (_calculate_control_output_trigger())
+                        {
+                            int parameter_id = p; // We use the index as ID.
+                            float normalized_value = _to_normalized(current_port->control_value(),
+                                                                    current_port->min(),
+                                                                    current_port->max());
+                            auto e = RtEvent::make_parameter_change_event(this->id(),
+                                                                          0,
+                                                                          parameter_id,
+                                                                          normalized_value);
+                            output_event(e);
+                        }
+                    }
                     break;
                 case PortType::TYPE_EVENT:
                     _process_midi_output(current_port);
@@ -616,6 +745,19 @@ void LV2_Wrapper::_deliver_outputs_from_plugin(bool /*send_ui_updates*/)
             }
         }
     }
+}
+
+bool LV2_Wrapper::_calculate_control_output_trigger()
+{
+    bool trigger = false;
+    _control_output_sample_count += AUDIO_CHUNK_SIZE;
+    if (_control_output_sample_count > _control_output_refresh_interval)
+    {
+        _control_output_sample_count -= _control_output_refresh_interval;
+        trigger = true;
+    }
+
+    return trigger;
 }
 
 void LV2_Wrapper::_process_midi_output(Port* port)
@@ -717,7 +859,7 @@ void LV2_Wrapper::_process_midi_input(Port* port)
                         (const uint8_t *) LV2_ATOM_BODY(_lv2_pos));
     }
 
-    auto urids = _model->urids();
+    auto& urids = _model->urids();
 
     if (_model->update_requested())
     {
@@ -785,7 +927,7 @@ MidiDataByte LV2_Wrapper::_convert_event_to_midi_buffer(RtEvent& event)
                                                             keyboard_event_ptr->velocity());
             }
             default:
-                return MidiDataByte();
+                return {};
         }
     }
     else if (event.type() >= RtEventType::PITCH_BEND && event.type() <= RtEventType::MODULATION)
@@ -811,7 +953,7 @@ MidiDataByte LV2_Wrapper::_convert_event_to_midi_buffer(RtEvent& event)
                                                          keyboard_common_event_ptr->value());
             }
             default:
-                return MidiDataByte();
+                return {};
         }
     }
     else if (event.type() == RtEventType::WRAPPED_MIDI_EVENT)
@@ -821,29 +963,21 @@ MidiDataByte LV2_Wrapper::_convert_event_to_midi_buffer(RtEvent& event)
     }
 
     assert(false); // All cases should have been catered for.
-    return MidiDataByte();
+    return {};
 }
 
 void LV2_Wrapper::_map_audio_buffers(const ChunkSampleBuffer &in_buffer, ChunkSampleBuffer &out_buffer)
 {
     int i;
 
-    if (_double_mono_input)
+    for (i = 0; i < _current_input_channels; ++i)
     {
-        _process_inputs[0] = const_cast<float*>(in_buffer.channel(0));
-        _process_inputs[1] = const_cast<float*>(in_buffer.channel(0));
+        _process_inputs[i] = const_cast<float*>(in_buffer.channel(i));
     }
-    else
-    {
-        for (i = 0; i < _current_input_channels; ++i)
-        {
-            _process_inputs[i] = const_cast<float*>(in_buffer.channel(i));
-        }
 
-        for (; i <= _max_input_channels; ++i)
-        {
-            _process_inputs[i] = (_dummy_input.channel(0));
-        }
+    for (; i <= _max_input_channels; ++i)
+    {
+        _process_inputs[i] = (_dummy_input.channel(0));
     }
 
     for (i = 0; i < _current_output_channels; i++)
@@ -857,26 +991,11 @@ void LV2_Wrapper::_map_audio_buffers(const ChunkSampleBuffer &in_buffer, ChunkSa
     }
 }
 
-void LV2_Wrapper::_update_mono_mode(bool speaker_arr_status)
-{
-    _double_mono_input = false;
-
-    if (speaker_arr_status)
-    {
-        return;
-    }
-
-    if (_current_input_channels == 1 && _max_input_channels == 2)
-    {
-        _double_mono_input = true;
-    }
-}
-
 void LV2_Wrapper::_pause_audio_processing()
 {
     _previous_play_state = _model->play_state();
 
-    if(_previous_play_state != PlayState::PAUSED)
+    if (_previous_play_state != PlayState::PAUSED)
     {
         _model->set_play_state(PlayState::PAUSED);
     }
@@ -907,7 +1026,7 @@ const LilvPlugin* LV2_Wrapper::_plugin_handle_from_URI(const std::string& plugin
 
     /* Find plugin */
     SUSHI_LOG_INFO("Plugin: {}", lilv_node_as_string(plugin_uri));
-    const auto plugin  = lilv_plugins_get_by_uri(plugins, plugin_uri);
+    const auto plugin = lilv_plugins_get_by_uri(plugins, plugin_uri);
     lilv_node_free(plugin_uri);
 
     if (plugin == nullptr)
@@ -917,6 +1036,22 @@ const LilvPlugin* LV2_Wrapper::_plugin_handle_from_URI(const std::string& plugin
     }
 
     return plugin;
+}
+
+void LV2_Wrapper::_set_binary_state(ProcessorState* state)
+{
+    auto lilv_state = lilv_state_new_from_string(_world->world(),
+                                                 &_model->get_map(),
+                                                 reinterpret_cast<const char*>(state->binary_data().data()));
+
+    if (lilv_state)
+    {
+        auto state_handler = _model->state();
+        state_handler->apply_state(lilv_state, true);
+        _host_control.post_event(new AudioGraphNotificationEvent(AudioGraphNotificationEvent::Action::PROCESSOR_UPDATED,
+                                                                 this->id(), 0, IMMEDIATE_PROCESS));
+    }
+    SUSHI_LOG_ERROR_IF(lilv_state == nullptr, "Failed to decode lilv state from binary state");
 }
 
 } // namespace lv2

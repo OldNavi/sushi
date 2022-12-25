@@ -31,7 +31,7 @@ namespace sample_player_plugin {
 
 constexpr size_t TOTAL_POLYPHONY = 8;
 
-class SamplePlayerPlugin : public InternalPlugin
+class SamplePlayerPlugin : public InternalPlugin, public UidHelper<SamplePlayerPlugin>
 {
 public:
     SamplePlayerPlugin(HostControl host_control);
@@ -42,16 +42,22 @@ public:
 
     void configure(float sample_rate) override;
 
+    void set_enabled(bool enabled) override;
+
     void set_bypassed(bool bypassed) override;
 
     void process_event(const RtEvent& event) override ;
 
-    void process_audio(const ChunkSampleBuffer &in_buffer, ChunkSampleBuffer &out_buffer) override;
+    void process_audio(const ChunkSampleBuffer& in_buffer, ChunkSampleBuffer& out_buffer) override;
 
     ProcessorReturnCode set_property_value(ObjectId property_id, const std::string& value) override;
 
+    static std::string_view static_uid();
+
 private:
-    BlobData _load_sample_file(const std::string &file_name);
+    void _all_notes_off();
+
+    BlobData _load_sample_file(const std::string& file_name);
 
     float*  _sample_buffer{nullptr};
     float   _dummy_sample{0.0f};

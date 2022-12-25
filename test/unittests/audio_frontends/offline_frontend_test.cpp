@@ -66,6 +66,7 @@ TEST_F(TestOfflineFrontend, TestWavProcessing)
     // Read the generated file and verify the result
     SNDFILE*    output_file;
     SF_INFO     soundfile_info;
+    memset(&soundfile_info, 0, sizeof(soundfile_info));
 
     if (! (output_file = sf_open(output_file_name.c_str(), SFM_READ, &soundfile_info)) )
     {
@@ -109,7 +110,7 @@ TEST_F(TestOfflineFrontend, TestMonoMode)
     auto ret_code = _module_under_test->init(&config);
     ASSERT_EQ(AudioFrontendStatus::OK, ret_code);
 
-    // Process with the dummy bypass engine and make check this doesnt crash
+    // Process with the dummy bypass engine and make check this doesn't crash
     _module_under_test->run();
 }
 
@@ -141,6 +142,12 @@ TEST_F(TestOfflineFrontend, TestAddSequencerEvents)
     for(auto it = event_q.begin(); it != jt; ++it)
     {
         ASSERT_GE((*it)->time(), (*(it + 1))->time());
+    }
+
+    // Clear events manually, as that would be done by the EventDispatcher otherwise
+    for (auto* event : events)
+    {
+        delete event;
     }
 
 }

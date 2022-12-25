@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <memory>
 
 #include "gtest/gtest.h"
 
@@ -21,8 +22,8 @@
 using namespace sushi;
 
 constexpr float TEST_SAMPLERATE = 48000;
+constexpr int   TEST_CHANNEL_COUNT = 2;
 static const std::string WRITE_FILE = "write_test";
-constexpr int WRITE_NUMBER_OF_SAMPLES = 16384;
 
 class TestPassthroughPlugin : public ::testing::Test
 {
@@ -32,26 +33,25 @@ protected:
     }
     void SetUp()
     {
-        _module_under_test = new passthrough_plugin::PassthroughPlugin(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        _module_under_test = std::make_unique<passthrough_plugin::PassthroughPlugin>(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        _module_under_test->set_enabled(true);
+        _module_under_test->set_input_channels(TEST_CHANNEL_COUNT);
+        _module_under_test->set_output_channels(TEST_CHANNEL_COUNT);
     }
 
-    void TearDown()
-    {
-        delete _module_under_test;
-    }
     HostControlMockup _host_control;
-    InternalPlugin* _module_under_test;
+    std::unique_ptr<InternalPlugin> _module_under_test;
 };
 
 TEST_F(TestPassthroughPlugin, TestInstantiation)
 {
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
 }
 
 TEST_F(TestPassthroughPlugin, TestInitialization)
 {
     _module_under_test->init(48000);
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Passthrough", _module_under_test->label());
     ASSERT_EQ("sushi.testing.passthrough", _module_under_test->name());
 }
@@ -59,8 +59,8 @@ TEST_F(TestPassthroughPlugin, TestInitialization)
 // Fill a buffer with ones and test that they are passed through unchanged
 TEST_F(TestPassthroughPlugin, TestProcess)
 {
-    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(1);
-    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(1);
+    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(TEST_CHANNEL_COUNT);
+    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(TEST_CHANNEL_COUNT);
     test_utils::fill_sample_buffer(in_buffer, 1.0f);
     RtSafeRtEventFifo event_queue;
     ASSERT_TRUE(event_queue.empty());
@@ -82,33 +82,33 @@ protected:
 
     void SetUp()
     {
-        _module_under_test = new gain_plugin::GainPlugin(_host_control.make_host_control_mockup());
+        _module_under_test = std::make_unique<gain_plugin::GainPlugin>(_host_control.make_host_control_mockup());
         ProcessorReturnCode status = _module_under_test->init(TEST_SAMPLERATE);
+        _module_under_test->set_enabled(true);
+        _module_under_test->set_input_channels(TEST_CHANNEL_COUNT);
+        _module_under_test->set_output_channels(TEST_CHANNEL_COUNT);
         ASSERT_EQ(ProcessorReturnCode::OK, status);
     }
 
-    void TearDown()
-    {
-        delete _module_under_test;
-    }
     HostControlMockup _host_control;
-    gain_plugin::GainPlugin* _module_under_test;
+    std::unique_ptr<gain_plugin::GainPlugin> _module_under_test;
 };
 
 TEST_F(TestGainPlugin, TestInstantiation)
 {
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Gain", _module_under_test->label());
     ASSERT_EQ("sushi.testing.gain", _module_under_test->name());
+    ASSERT_EQ(gain_plugin::GainPlugin::static_uid(), _module_under_test->uid());
 }
 
 TEST_F(TestGainPlugin, TestChannelSetup)
 {
-    _module_under_test->set_input_channels(2);
     ASSERT_EQ(2, _module_under_test->output_channels());
     ASSERT_EQ(2, _module_under_test->input_channels());
 
     _module_under_test->set_input_channels(1);
+    _module_under_test->set_output_channels(1);
     ASSERT_EQ(1, _module_under_test->output_channels());
     ASSERT_EQ(1, _module_under_test->input_channels());
 }
@@ -119,8 +119,6 @@ TEST_F(TestGainPlugin, TestProcess)
     SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(2);
     SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(2);
     test_utils::fill_sample_buffer(in_buffer, 1.0f);
-    _module_under_test->set_input_channels(2);
-    _module_under_test->set_output_channels(2);
     _module_under_test->_gain_parameter->set(0.875f);
     _module_under_test->process_audio(in_buffer, out_buffer);
     test_utils::assert_buffer_value(2.0f, out_buffer, test_utils::DECIBEL_ERROR);
@@ -134,33 +132,32 @@ protected:
     }
     void SetUp()
     {
-        _module_under_test = new equalizer_plugin::EqualizerPlugin(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        _module_under_test = std::make_unique<equalizer_plugin::EqualizerPlugin>(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
         ProcessorReturnCode status = _module_under_test->init(TEST_SAMPLERATE);
+        _module_under_test->set_enabled(true);
+        _module_under_test->set_input_channels(TEST_CHANNEL_COUNT);
+        _module_under_test->set_output_channels(TEST_CHANNEL_COUNT);
         ASSERT_EQ(ProcessorReturnCode::OK, status);
     }
 
-    void TearDown()
-    {
-        delete _module_under_test;
-    }
     HostControlMockup _host_control;
-    equalizer_plugin::EqualizerPlugin* _module_under_test;
+    std::unique_ptr<equalizer_plugin::EqualizerPlugin> _module_under_test;
 };
 
 TEST_F(TestEqualizerPlugin, TestInstantiation)
 {
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Equalizer", _module_under_test->label());
     ASSERT_EQ("sushi.testing.equalizer", _module_under_test->name());
 }
 
 TEST_F(TestEqualizerPlugin, TestChannelSetup)
 {
-    _module_under_test->set_input_channels(2);
     ASSERT_EQ(2, _module_under_test->output_channels());
     ASSERT_EQ(2, _module_under_test->input_channels());
 
     _module_under_test->set_input_channels(1);
+    _module_under_test->set_output_channels(1);
     ASSERT_EQ(1, _module_under_test->output_channels());
     ASSERT_EQ(1, _module_under_test->input_channels());
 }
@@ -182,7 +179,6 @@ TEST_F(TestEqualizerPlugin, TestProcess)
     auto q_param = static_cast<const FloatParameterDescriptor*>(_module_under_test->parameter_from_name("q"));
     ASSERT_TRUE(q_param);
 
-    _module_under_test->set_input_channels(2);
     _module_under_test->_frequency->set(0.1991991991991992f);
     _module_under_test->_gain->set(0.625f);
     _module_under_test->_q->set(0.1f);
@@ -199,32 +195,31 @@ protected:
     }
     void SetUp()
     {
-        _module_under_test = new peak_meter_plugin::PeakMeterPlugin(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        _module_under_test = std::make_unique<peak_meter_plugin::PeakMeterPlugin>(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
         ProcessorReturnCode status = _module_under_test->init(TEST_SAMPLERATE);
         ASSERT_EQ(ProcessorReturnCode::OK, status);
+        _module_under_test->set_enabled(true);
+        _module_under_test->set_input_channels(TEST_CHANNEL_COUNT);
+        _module_under_test->set_output_channels(TEST_CHANNEL_COUNT);
         _module_under_test->set_event_output(&_fifo);
     }
 
-    void TearDown()
-    {
-        delete _module_under_test;
-    }
     HostControlMockup _host_control;
-    peak_meter_plugin::PeakMeterPlugin* _module_under_test;
+    std::unique_ptr<peak_meter_plugin::PeakMeterPlugin> _module_under_test;
     RtSafeRtEventFifo _fifo;
 };
 
 TEST_F(TestPeakMeterPlugin, TestInstantiation)
 {
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Peak Meter", _module_under_test->label());
     ASSERT_EQ("sushi.testing.peakmeter", _module_under_test->name());
 }
 
 TEST_F(TestPeakMeterPlugin, TestProcess)
 {
-    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(2);
-    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(2);
+    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(TEST_CHANNEL_COUNT);
+    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(TEST_CHANNEL_COUNT);
     test_utils::fill_sample_buffer(in_buffer, 0.5f);
 
     /* Process enough samples to catch some event outputs */
@@ -241,14 +236,15 @@ TEST_F(TestPeakMeterPlugin, TestProcess)
     ASSERT_TRUE(_fifo.pop(event));
     EXPECT_EQ(RtEventType::FLOAT_PARAMETER_CHANGE, event.type());
     EXPECT_EQ(_module_under_test->id(), event.processor_id());
-    /*  The rms and dB calculations are tested separately, just test that it a reasonable value */
+    /*  The rms and dB calculations are tested separately, just test that it is a reasonable value */
     EXPECT_GT(event.parameter_change_event()->value(), 0.5f);
 
     /* Set the rate parameter to minimum */
     auto rate_id = _module_under_test->parameter_from_name("update_rate")->id();
     _module_under_test->process_event(RtEvent::make_parameter_change_event(_module_under_test->id(),
                                                                            0, rate_id, 0.0f));
-    while (_fifo.pop(event)) {};
+    while (_fifo.pop(event)) {}
+
     ASSERT_TRUE(_fifo.empty());
     for (int i = 0; i <= no_of_process_calls * 5 ; ++i)
     {
@@ -259,8 +255,8 @@ TEST_F(TestPeakMeterPlugin, TestProcess)
 
 TEST_F(TestPeakMeterPlugin, TestClipDetection)
 {
-    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(2);
-    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(2);
+    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(TEST_CHANNEL_COUNT);
+    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(TEST_CHANNEL_COUNT);
     auto first_channel = ChunkSampleBuffer::create_non_owning_buffer(in_buffer, 0, 1);
     test_utils::fill_sample_buffer(in_buffer, 0.5f);
     test_utils::fill_sample_buffer(first_channel, 1.5f);
@@ -320,24 +316,21 @@ protected:
 
     void SetUp()
     {
-        _module_under_test = new lfo_plugin::LfoPlugin(_host_control.make_host_control_mockup());
+        _module_under_test = std::make_unique<lfo_plugin::LfoPlugin>(_host_control.make_host_control_mockup());
         ProcessorReturnCode status = _module_under_test->init(TEST_SAMPLERATE);
         ASSERT_EQ(ProcessorReturnCode::OK, status);
         _module_under_test->set_event_output(&_queue);
+        _module_under_test->set_enabled(true);
     }
 
-    void TearDown()
-    {
-        delete _module_under_test;
-    }
     HostControlMockup _host_control;
-    lfo_plugin::LfoPlugin* _module_under_test;
+    std::unique_ptr<lfo_plugin::LfoPlugin> _module_under_test;
     RtSafeRtEventFifo _queue;
 };
 
 TEST_F(TestLfoPlugin, TestInstantiation)
 {
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Lfo", _module_under_test->label());
     ASSERT_EQ("sushi.testing.lfo", _module_under_test->name());
 }
@@ -372,23 +365,23 @@ protected:
     }
     void SetUp()
     {
-        _module_under_test = new wav_writer_plugin::WavWriterPlugin(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        _module_under_test = std::make_unique<wav_writer_plugin::WavWriterPlugin>(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        auto status = _module_under_test->init(TEST_SAMPLERATE);
+        ASSERT_EQ(ProcessorReturnCode::OK, status);
         _module_under_test->set_event_output(&_fifo);
+        _module_under_test->set_enabled(true);
+        _module_under_test->set_input_channels(wav_writer_plugin::N_AUDIO_CHANNELS);
+        _module_under_test->set_output_channels(wav_writer_plugin::N_AUDIO_CHANNELS);
     }
 
-    void TearDown()
-    {
-        delete _module_under_test;
-    }
     HostControlMockup _host_control;
-    wav_writer_plugin::WavWriterPlugin* _module_under_test;
+    std::unique_ptr<wav_writer_plugin::WavWriterPlugin> _module_under_test;
     RtEventFifo<10> _fifo;
 };
 
 TEST_F(TestWavWriterPlugin, TestInitialization)
 {
-    _module_under_test->init(TEST_SAMPLERATE);
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Wav writer", _module_under_test->label());
     ASSERT_EQ("sushi.testing.wav_writer", _module_under_test->name());
 }
@@ -396,14 +389,12 @@ TEST_F(TestWavWriterPlugin, TestInitialization)
 // Fill a buffer with ones and test that they are passed through unchanged
 TEST_F(TestWavWriterPlugin, TestProcess)
 {
-    _module_under_test->init(TEST_SAMPLERATE);
-
     ObjectId record_param_id = _module_under_test->parameter_from_name("recording")->id();
     ObjectId file_property_id = _module_under_test->parameter_from_name("destination_file")->id();
 
     // Set up buffers and events
-    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(2);
-    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(2);
+    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(wav_writer_plugin::N_AUDIO_CHANNELS);
+    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(wav_writer_plugin::N_AUDIO_CHANNELS);
     test_utils::fill_sample_buffer(in_buffer, 1.0f);
     std::string path = "./";
     path.append(WRITE_FILE);
@@ -425,7 +416,7 @@ TEST_F(TestWavWriterPlugin, TestProcess)
     test_utils::assert_buffer_value(1.0f, out_buffer);
 
     // Test Writing.
-    _module_under_test->_recording_parameter->set_values(false, false); // set recording to false to immediately write
+    _module_under_test->_recording_parameter->set_values(false, false); // set recording to false, to immediately write
     ASSERT_EQ(_module_under_test->input_channels() * AUDIO_CHUNK_SIZE, _module_under_test->_write_to_file());
 
     // Test end recording and close file
@@ -436,6 +427,7 @@ TEST_F(TestWavWriterPlugin, TestProcess)
     // Verify written samples
     path.append(".wav");
     SF_INFO soundfile_info;
+    memset(&soundfile_info, 0, sizeof(SF_INFO));
     SNDFILE* file = sf_open(path.c_str(), SFM_READ, &soundfile_info);
     if (sf_error(file))
     {
@@ -460,23 +452,24 @@ protected:
     }
     void SetUp()
     {
-        _module_under_test = new mono_summing_plugin::MonoSummingPlugin(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        _module_under_test = std::make_unique<mono_summing_plugin::MonoSummingPlugin>(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        auto status = _module_under_test->init(TEST_SAMPLERATE);
+        ASSERT_EQ(ProcessorReturnCode::OK, status);
+        _module_under_test->set_enabled(true);
         _module_under_test->set_event_output(&_fifo);
+        _module_under_test->set_input_channels(TEST_CHANNEL_COUNT);
+        _module_under_test->set_output_channels(TEST_CHANNEL_COUNT);
+
     }
 
-    void TearDown()
-    {
-        delete _module_under_test;
-    }
     HostControlMockup _host_control;
-    mono_summing_plugin::MonoSummingPlugin* _module_under_test;
+    std::unique_ptr<mono_summing_plugin::MonoSummingPlugin> _module_under_test;
     RtEventFifo<10> _fifo;
 };
 
 TEST_F(TestMonoSummingPlugin, TestInitialization)
 {
-    _module_under_test->init(TEST_SAMPLERATE);
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Mono summing", _module_under_test->label());
     ASSERT_EQ("sushi.testing.mono_summing", _module_under_test->name());
 }
@@ -484,15 +477,13 @@ TEST_F(TestMonoSummingPlugin, TestInitialization)
 // Fill a buffer with ones and test that they are passed through unchanged
 TEST_F(TestMonoSummingPlugin, TestProcess)
 {
-    _module_under_test->init(TEST_SAMPLERATE);
-
     // Set up buffers and events
-    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(2);
+    SampleBuffer<AUDIO_CHUNK_SIZE> in_buffer(TEST_CHANNEL_COUNT);
     for (int sample = 0; sample < AUDIO_CHUNK_SIZE; ++sample)
     {
         in_buffer.channel(0)[sample] = 1.0f;
     }
-    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(2);
+    SampleBuffer<AUDIO_CHUNK_SIZE> out_buffer(TEST_CHANNEL_COUNT);
 
     _module_under_test->process_audio(in_buffer, out_buffer);
     for (int sample = 0; sample < AUDIO_CHUNK_SIZE; ++sample)
@@ -511,23 +502,21 @@ protected:
     }
     void SetUp()
     {
-        _module_under_test = new sample_delay_plugin::SampleDelayPlugin(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        _module_under_test = std::make_unique<sample_delay_plugin::SampleDelayPlugin>(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        auto status = _module_under_test->init(TEST_SAMPLERATE);
+        ASSERT_EQ(ProcessorReturnCode::OK, status);
+        _module_under_test->set_enabled(true);
         _module_under_test->set_event_output(&_fifo);
     }
 
-    void TearDown()
-    {
-        delete _module_under_test;
-    }
     HostControlMockup _host_control;
-    sample_delay_plugin::SampleDelayPlugin* _module_under_test;
+    std::unique_ptr<sample_delay_plugin::SampleDelayPlugin> _module_under_test;
     RtSafeRtEventFifo _fifo;
 };
 
 TEST_F(TestSampleDelayPlugin, TestInitialization)
 {
-    _module_under_test->init(TEST_SAMPLERATE);
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Sample delay", _module_under_test->label());
     ASSERT_EQ("sushi.testing.sample_delay", _module_under_test->name());
 }
@@ -535,10 +524,8 @@ TEST_F(TestSampleDelayPlugin, TestInitialization)
 // Fill a buffer with ones and test that they are passed through unchanged
 TEST_F(TestSampleDelayPlugin, TestProcess)
 {
-    _module_under_test->init(TEST_SAMPLERATE);
-
     // Set up data
-    int n_audio_channels = 2;
+    int n_audio_channels = TEST_CHANNEL_COUNT;
     std::vector<int> delay_times = {0, 1, 5, 20, 62, 15, 2};
     SampleBuffer<AUDIO_CHUNK_SIZE> zero_buffer(n_audio_channels);
     SampleBuffer<AUDIO_CHUNK_SIZE> result_buffer(n_audio_channels);
@@ -577,6 +564,8 @@ TEST_F(TestSampleDelayPlugin, TestProcess)
     }
 }
 
+constexpr int TEST_CHANNELS_STEREO = 2;
+
 class TestStereoMixerPlugin : public ::testing::Test
 {
 protected:
@@ -585,20 +574,18 @@ protected:
     }
     void SetUp()
     {
-        _module_under_test = new stereo_mixer_plugin::StereoMixerPlugin(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        _module_under_test = std::make_unique<stereo_mixer_plugin::StereoMixerPlugin>(_host_control.make_host_control_mockup(TEST_SAMPLERATE));
+        auto status = _module_under_test->init(TEST_SAMPLERATE);
+        ASSERT_EQ(ProcessorReturnCode::OK, status);
+        _module_under_test->set_enabled(true);
         _module_under_test->set_event_output(&_fifo);
-    }
-
-    void TearDown()
-    {
-        delete _module_under_test;
     }
 
     void WaitForStableParameters()
     {
         // Run one empty process call to update the smoothers to the current parameter values
-        ChunkSampleBuffer temp_in_buffer(2);
-        ChunkSampleBuffer temp_out_buffer(2);
+        ChunkSampleBuffer temp_in_buffer(TEST_CHANNELS_STEREO);
+        ChunkSampleBuffer temp_out_buffer(TEST_CHANNELS_STEREO);
         temp_in_buffer.clear();
         temp_out_buffer.clear();
         _module_under_test->process_audio(temp_in_buffer, temp_out_buffer);
@@ -617,24 +604,21 @@ protected:
     }
 
     HostControlMockup _host_control;
-    stereo_mixer_plugin::StereoMixerPlugin* _module_under_test;
+    std::unique_ptr<stereo_mixer_plugin::StereoMixerPlugin> _module_under_test;
     RtSafeRtEventFifo _fifo;
 };
 
 TEST_F(TestStereoMixerPlugin, TestInitialization)
 {
-    _module_under_test->init(TEST_SAMPLERATE);
-    ASSERT_TRUE(_module_under_test);
+    ASSERT_TRUE(_module_under_test.get());
     ASSERT_EQ("Stereo Mixer", _module_under_test->label());
     ASSERT_EQ("sushi.testing.stereo_mixer", _module_under_test->name());
 }
 
 TEST_F(TestStereoMixerPlugin, TestProcess)
 {
-    _module_under_test->init(TEST_SAMPLERATE);
-
     // Set up data
-    int n_audio_channels = 2;
+    int n_audio_channels = TEST_CHANNELS_STEREO;
     SampleBuffer<AUDIO_CHUNK_SIZE> input_buffer(n_audio_channels);
     SampleBuffer<AUDIO_CHUNK_SIZE> output_buffer(n_audio_channels);
     SampleBuffer<AUDIO_CHUNK_SIZE> expected_buffer(n_audio_channels);

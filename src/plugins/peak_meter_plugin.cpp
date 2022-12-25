@@ -38,7 +38,7 @@ constexpr float OUTPUT_MIN_DB = -120.0f;
 constexpr float OUTPUT_MAX_DB = 24.0f;
 constexpr float OUTPUT_MIN = 1.0e-6f; // -120dB
 
-constexpr auto DEFAULT_NAME = "sushi.testing.peakmeter";
+constexpr auto PLUGIN_UID = "sushi.testing.peakmeter";
 constexpr auto DEFAULT_LABEL = "Peak Meter";
 
 // Convert a gain value to a normalised gain value
@@ -55,13 +55,15 @@ PeakMeterPlugin::PeakMeterPlugin(HostControl host_control) : InternalPlugin(host
     _clipped.fill(false);
     _max_input_channels = MAX_METERED_CHANNELS;
     _max_output_channels = MAX_METERED_CHANNELS;
-    Processor::set_name(DEFAULT_NAME);
+    Processor::set_name(PLUGIN_UID);
     Processor::set_label(DEFAULT_LABEL);
 
-    _link_channels_parameter = register_bool_parameter("link_channels", "Link Channels 1 & 2", "", false);
-    _send_peaks_only_parameter = register_bool_parameter("peaks_only", "Peaks Only", "", false);
+    _link_channels_parameter = register_bool_parameter("link_channels", "Link Channels 1 & 2", "", false, Direction::AUTOMATABLE);
+    _send_peaks_only_parameter = register_bool_parameter("peaks_only", "Peaks Only", "", false, Direction::AUTOMATABLE);
     _update_rate_parameter = register_float_parameter("update_rate", "Update Rate", "/s", DEFAULT_REFRESH_RATE,
-                                                      0.1, 25, new FloatParameterPreProcessor(0.1, DEFAULT_REFRESH_RATE));
+                                                      0.1, 25,
+                                                      Direction::AUTOMATABLE,
+                                                      new FloatParameterPreProcessor(0.1, DEFAULT_REFRESH_RATE));
     _update_rate_id = _update_rate_parameter->descriptor()->id();
 
     std::string param_name = "level_{}";
@@ -70,7 +72,8 @@ PeakMeterPlugin::PeakMeterPlugin(HostControl host_control) : InternalPlugin(host
     {
         _level_parameters[i] = register_float_parameter(fmt::format(param_name, i), fmt::format(param_label, i), "dB",
                                                         OUTPUT_MIN_DB, OUTPUT_MIN_DB, OUTPUT_MAX_DB,
-                                                        new dBToLinPreProcessor(OUTPUT_MIN, 24.0f));
+                                                        Direction::OUTPUT,
+                                                        new dBToLinPreProcessor(OUTPUT_MIN_DB, OUTPUT_MAX_DB));
         assert (_level_parameters[i]);
     }
 
@@ -78,7 +81,11 @@ PeakMeterPlugin::PeakMeterPlugin(HostControl host_control) : InternalPlugin(host
     param_label = "Clip ch {}";
     for (int i = 0; i < MAX_METERED_CHANNELS; ++i)
     {
-        _clip_parameters[i] = register_bool_parameter(fmt::format(param_name, i), fmt::format(param_label, i), "", false);
+        _clip_parameters[i] = register_bool_parameter(fmt::format(param_name, i),
+                                                      fmt::format(param_label, i),
+                                                      "",
+                                                      false,
+                                                      Direction::OUTPUT);
     }
 
     assert(_link_channels_parameter && _send_peaks_only_parameter && _update_rate_parameter);
@@ -155,7 +162,7 @@ void PeakMeterPlugin::_process_peak_detection(const ChunkSampleBuffer& in, bool 
         update = true;
         if (send_only_peaks)
         {
-            update = update && _peak_hysteresis;
+            update = _peak_hysteresis;
         }
     }
 
@@ -218,6 +225,11 @@ void PeakMeterPlugin::_process_clip_detection(const ChunkSampleBuffer& in, bool 
         }
         _clip_hold_count[ch] += AUDIO_CHUNK_SIZE;
     }
+}
+
+std::string_view PeakMeterPlugin::static_uid()
+{
+    return PLUGIN_UID;
 }
 
 }// namespace gain_plugin

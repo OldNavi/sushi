@@ -18,20 +18,13 @@
 * @copyright 2017-2019 Modern Ancient Instruments Networked AB, dba Elk, Stockholm
 */
 
-#include <thread>
-
-#include "logging.h"
-
 #include "library/midi_encoder.h"
 #include "control_frontends/base_control_frontend.h"
 
 namespace sushi {
 namespace control_frontend {
 
-SUSHI_GET_LOGGER;
 
-constexpr int STOP_RETRIES = 200;
-constexpr auto RETRY_INTERVAL = std::chrono::milliseconds(2);
 
 void BaseControlFrontend::send_parameter_change_event(ObjectId processor,
                                                       ObjectId parameter,

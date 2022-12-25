@@ -18,8 +18,6 @@
  * @copyright 2017-2019 Modern Ancient Instruments Networked AB, dba Elk, Stockholm
  */
 
-#include <cstring>
-
 #include "pluginterfaces/base/ustring.h"
 #include "public.sdk/source/vst/utility/stringconvert.h"
 #include "base/source/fobject.h"
@@ -43,24 +41,27 @@ Steinberg::tresult SushiHostApplication::getName(Steinberg::Vst::String128 name)
     return Steinberg::kResultOk;
 }
 
-ComponentHandler::ComponentHandler(Vst3xWrapper* wrapper_instance) : _wrapper_instance(wrapper_instance)
+ComponentHandler::ComponentHandler(Vst3xWrapper* wrapper_instance,
+                                   HostControl* host_control) : _wrapper_instance(wrapper_instance),
+                                                                _host_control(host_control)
 {}
 
 Steinberg::tresult ComponentHandler::performEdit(Steinberg::Vst::ParamID parameter_id,
                                                  Steinberg::Vst::ParamValue normalized_value)
 {
+    SUSHI_LOG_DEBUG("performEdit called, param: {} value: {}", parameter_id, normalized_value);
     _wrapper_instance->set_parameter_change(ObjectId(parameter_id), static_cast<float>(normalized_value));
     return Steinberg::kResultOk;
 }
 
 Steinberg::tresult ComponentHandler::restartComponent(Steinberg::int32 flags)
 {
-    if (flags | Steinberg::Vst::kParamValuesChanged)
+    SUSHI_LOG_DEBUG("restartComponent called");
+    if (flags | (Steinberg::Vst::kParamValuesChanged & Steinberg::Vst::kReloadComponent))
     {
-        if (_wrapper_instance->_sync_controller_to_processor() == true)
-        {
-            return Steinberg::kResultOk;
-        }
+        _host_control->post_event(new AudioGraphNotificationEvent(AudioGraphNotificationEvent::Action::PROCESSOR_UPDATED,
+                                                                  _wrapper_instance->id(), 0, IMMEDIATE_PROCESS));
+        return Steinberg::kResultOk;
     }
     return Steinberg::kResultFalse;
 }
@@ -73,7 +74,7 @@ public:
     SUSHI_DECLARE_NON_COPYABLE(ConnectionProxy);
 
     explicit ConnectionProxy(Steinberg::Vst::IConnectionPoint* src_connection) : _source_connection(src_connection) {}
-    virtual ~ConnectionProxy() = default;
+    ~ConnectionProxy() override = default;
 
     Steinberg::tresult connect(Steinberg::Vst::IConnectionPoint* other) override;
     Steinberg::tresult disconnect(Steinberg::Vst::IConnectionPoint* other) override;
@@ -146,9 +147,7 @@ bool ConnectionProxy::disconnect()
 }
 
 PluginInstance::PluginInstance(SushiHostApplication* host_app): _host_app(host_app)
-{
-
-}
+{}
 
 PluginInstance::~PluginInstance()
 {
@@ -332,7 +331,7 @@ Steinberg::Vst::IComponent* load_component(Steinberg::IPluginFactory* factory,
 
 Steinberg::Vst::IAudioProcessor* load_processor(Steinberg::Vst::IComponent* component)
 {
-    /* This is how you properly cast the component to a processor */
+    // This is how you properly cast the component to a processor
     Steinberg::Vst::IAudioProcessor* processor;
     auto res = component->queryInterface (Steinberg::Vst::IAudioProcessor::iid,
                                      reinterpret_cast<void**>(&processor));
@@ -347,7 +346,8 @@ Steinberg::Vst::IEditController* load_controller(Steinberg::IPluginFactory* fact
                                                   Steinberg::Vst::IComponent* component)
 {
     /* The controller can be implemented both as a part of the component or
-     * as a separate object, Steinberg recommends the latter though */
+     * as a separate object, Steinberg recommends the latter, JUCE does the
+     * former in their plugin adaptor */
     Steinberg::Vst::IEditController* controller;
     auto res = component->queryInterface(Steinberg::Vst::IEditController::iid,
                                          reinterpret_cast<void**>(&controller));
@@ -355,7 +355,7 @@ Steinberg::Vst::IEditController* load_controller(Steinberg::IPluginFactory* fact
     {
         return controller;
     }
-    /* Else try to instatiate the controller as a separate object */
+    // Else try to instantiate the controller as a separate object.
     Steinberg::TUID controllerTUID;
     if (component->getControllerClassId(controllerTUID) == Steinberg::kResultTrue)
     {

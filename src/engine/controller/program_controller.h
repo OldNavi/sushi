@@ -33,7 +33,7 @@ namespace controller_impl {
 class ProgramController : public ext::ProgramController
 {
 public:
-    ProgramController(BaseEngine* engine);
+    explicit ProgramController(BaseEngine* engine);
 
     ~ProgramController() override = default;
 
@@ -48,7 +48,6 @@ public:
     ext::ControlStatus set_processor_program(int processor_id, int program_id) override;
 
 private:
-    BaseEngine*                         _engine;
     dispatcher::BaseEventDispatcher*    _event_dispatcher;
     const BaseProcessorContainer*       _processors;
 };

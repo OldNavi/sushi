@@ -26,16 +26,14 @@
 namespace sushi {
 namespace return_plugin {
 
-constexpr auto DEFAULT_NAME = "return";
+constexpr auto PLUGIN_UID = "sushi.testing.return";
 constexpr auto DEFAULT_LABEL = "Return";
 
 ReturnPlugin::ReturnPlugin(HostControl host_control, SendReturnFactory* manager) : InternalPlugin(host_control),
                                                                                    _manager(manager)
 {
-    Processor::set_name(DEFAULT_NAME);
+    Processor::set_name(PLUGIN_UID);
     Processor::set_label(DEFAULT_LABEL);
-    _buffers[0] = ChunkSampleBuffer(MAX_SEND_CHANNELS);
-    _buffers[1] = ChunkSampleBuffer(MAX_SEND_CHANNELS);
     _max_input_channels = MAX_SEND_CHANNELS;
     _max_output_channels = MAX_SEND_CHANNELS;
 }
@@ -49,43 +47,32 @@ ReturnPlugin::~ReturnPlugin()
     }
 }
 
-void ReturnPlugin::send_audio(const ChunkSampleBuffer& send_buffer, float gain)
+void ReturnPlugin::send_audio(const ChunkSampleBuffer& buffer, int start_channel, float gain)
 {
     std::scoped_lock<SpinLock> lock(_buffer_lock);
 
     _maybe_swap_buffers(_host_control.transport()->current_process_time());
 
-    if (send_buffer.channel_count() == 1)
+    int max_channels = std::max(0, std::min(buffer.channel_count(), _current_output_channels - start_channel));
+
+    for (int c = 0 ; c < max_channels; ++c)
     {
-        _active_in->add_with_gain(send_buffer, gain);
-    }
-    else
-    {
-        int channels = std::min(send_buffer.channel_count(), _current_output_channels);
-        for (int c = 0; c < channels; ++c)
-        {
-            _active_in->add_with_gain(c, c, send_buffer, gain);
-        }
+        _active_in->add_with_gain(start_channel++, c, buffer, gain);
     }
 }
 
-void ReturnPlugin::send_audio_with_ramp(const ChunkSampleBuffer& send_buffer, float start_gain, float end_gain)
+void ReturnPlugin::send_audio_with_ramp(const ChunkSampleBuffer& buffer, int start_channel,
+                                        float start_gain, float end_gain)
 {
     std::scoped_lock<SpinLock> lock(_buffer_lock);
 
     _maybe_swap_buffers(_host_control.transport()->current_process_time());
 
-    if (send_buffer.channel_count() == 1)
+    int max_channels = std::max(0, std::min(buffer.channel_count(), _current_output_channels - start_channel));
+
+    for (int c = 0 ; c < max_channels; ++c)
     {
-        _active_in->add_with_ramp(send_buffer, start_gain, end_gain);
-    }
-    else
-    {
-        int channels = std::min(send_buffer.channel_count(), _current_output_channels);
-        for (int c = 0; c < channels; ++c)
-        {
-            _active_in->add_with_ramp(c, c, send_buffer, start_gain, end_gain);
-        }
+        _active_in->add_with_ramp(start_channel++, c, buffer, start_gain, end_gain);
     }
 }
 
@@ -111,6 +98,29 @@ void ReturnPlugin::configure(float sample_rate)
     for (auto& buffer : _buffers)
     {
         buffer.clear();
+    }
+}
+
+void ReturnPlugin::set_input_channels(int channels)
+{
+    Processor::set_input_channels(channels);
+    _channel_config(channels);
+}
+
+void ReturnPlugin::set_output_channels(int channels)
+{
+    Processor::set_output_channels(channels);
+    _channel_config(channels);
+}
+
+void ReturnPlugin::set_enabled(bool enabled)
+{
+    if (enabled == false)
+    {
+        for (auto& buffer : _buffers)
+        {
+            buffer.clear();
+        }
     }
 }
 
@@ -163,6 +173,11 @@ void ReturnPlugin::set_bypassed(bool bypassed)
     _host_control.post_event(new SetProcessorBypassEvent(this->id(), bypassed, IMMEDIATE_PROCESS));
 }
 
+std::string_view ReturnPlugin::static_uid()
+{
+    return PLUGIN_UID;
+}
+
 void inline ReturnPlugin::_swap_buffers()
 {
     std::swap(_active_in, _active_out);
@@ -176,6 +191,15 @@ void inline ReturnPlugin::_maybe_swap_buffers(Time current_time)
     {
         _last_process_time.store(current_time, std::memory_order_release);
         _swap_buffers();
+    }
+}
+
+void ReturnPlugin::_channel_config(int channels)
+{
+    int max_channels = std::max(std::max(channels, _current_input_channels), _current_output_channels);
+    if (_buffers.front().channel_count() != max_channels)
+    {
+        _buffers.fill(ChunkSampleBuffer(max_channels));
     }
 }
 

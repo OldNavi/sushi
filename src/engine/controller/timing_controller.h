@@ -32,7 +32,7 @@ namespace controller_impl {
 class TimingController : public ext::TimingController
 {
 public:
-    TimingController(BaseEngine* engine);
+    explicit TimingController(BaseEngine* engine);
 
     ~TimingController() override = default;
 
@@ -55,7 +55,6 @@ public:
 private:
     std::pair<ext::ControlStatus, ext::CpuTimings> _get_timings(int node) const;
 
-    BaseEngine*                         _engine;
     performance::BasePerformanceTimer*  _performance_timer;
 };
 

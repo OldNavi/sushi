@@ -24,30 +24,53 @@ namespace sushi {
 namespace engine {
 namespace controller_impl {
 
-// TODO - Remove when stubs have been properly implemented
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-
-OscController::OscController(BaseEngine* engine) : _engine(engine),
-                                                   _event_dispatcher(engine->event_dispatcher()),
+OscController::OscController(BaseEngine* engine) : _event_dispatcher(engine->event_dispatcher()),
                                                    _processors(engine->processor_container()) {}
+
+
+std::string OscController::get_send_ip() const
+{
+    if (_osc_frontend)
+    {
+        return _osc_frontend->send_ip();
+    }
+    return "";
+}
 
 int OscController::get_send_port() const
 {
-    return _osc_frontend->send_port();
+    if (_osc_frontend)
+    {
+        return _osc_frontend->send_port();
+    }
+    return 0;
 }
 
 int OscController::get_receive_port() const
 {
-    return _osc_frontend->receive_port();
+    if (_osc_frontend)
+    {
+        return _osc_frontend->receive_port();
+    }
+    return 0;
 }
 
 std::vector<std::string> OscController::get_enabled_parameter_outputs() const
 {
-    return _osc_frontend->get_enabled_parameter_outputs();
+    if (_osc_frontend)
+    {
+        return _osc_frontend->get_enabled_parameter_outputs();
+    }
+    return {};
 }
 
 ext::ControlStatus OscController::enable_output_for_parameter(int processor_id, int parameter_id)
 {
+    if (_osc_frontend == nullptr)
+    {
+        return ext::ControlStatus::UNSUPPORTED_OPERATION;
+    }
+
     auto lambda = [=] () -> int
     {
         // Here we SHOULD use name, since it is needed for building the OSC "Address Path".
@@ -67,7 +90,7 @@ ext::ControlStatus OscController::enable_output_for_parameter(int processor_id, 
 
         bool status = _osc_frontend->connect_from_parameter(processor->name(), parameter_descriptor->name());
 
-        if(status == false)
+        if (status == false)
         {
             return EventStatus::ERROR;
         }
@@ -82,6 +105,11 @@ ext::ControlStatus OscController::enable_output_for_parameter(int processor_id, 
 
 ext::ControlStatus OscController::disable_output_for_parameter(int processor_id, int parameter_id)
 {
+    if (_osc_frontend == nullptr)
+    {
+        return ext::ControlStatus::UNSUPPORTED_OPERATION;
+    }
+
     auto lambda = [=] () -> int
     {
         // Here we SHOULD use name, since it is needed for building the OSC "Address Path".
@@ -101,7 +129,7 @@ ext::ControlStatus OscController::disable_output_for_parameter(int processor_id,
 
         bool status = _osc_frontend->disconnect_from_parameter(processor->name(), parameter_descriptor->name());
 
-        if(status == false)
+        if (status == false)
         {
             return EventStatus::ERROR;
         }
@@ -121,6 +149,11 @@ void OscController::set_osc_frontend(control_frontend::OSCFrontend* osc_frontend
 
 ext::ControlStatus OscController::enable_all_output()
 {
+    if (_osc_frontend == nullptr)
+    {
+        return ext::ControlStatus::UNSUPPORTED_OPERATION;
+    }
+
     auto lambda = [=] () -> int
     {
         _osc_frontend->connect_from_all_parameters();
@@ -134,6 +167,11 @@ ext::ControlStatus OscController::enable_all_output()
 
 ext::ControlStatus OscController::disable_all_output()
 {
+    if (_osc_frontend == nullptr)
+    {
+        return ext::ControlStatus::UNSUPPORTED_OPERATION;
+    }
+
     auto lambda = [=] () -> int
     {
         _osc_frontend->disconnect_from_all_parameters();
@@ -144,8 +182,6 @@ ext::ControlStatus OscController::disable_all_output()
     _event_dispatcher->post_event(event);
     return ext::ControlStatus::OK;
 }
-
-#pragma GCC diagnostic pop
 
 } // namespace controller_impl
 } // namespace engine

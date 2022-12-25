@@ -85,7 +85,7 @@ TEST (TestRealtimeEvents, TestFactoryFunction)
     EXPECT_EQ(2, cv_event->cv_id());
     EXPECT_FLOAT_EQ(0.5, cv_event->value());
 
-    std::string str("Hej");
+    RtDeletableWrapper<std::string> str("Hej");
     event = RtEvent::make_string_property_change_event(129, 8, 65, &str);
     EXPECT_EQ(RtEventType::STRING_PROPERTY_CHANGE, event.type());
     auto spc_event = event.property_change_event();
@@ -108,9 +108,6 @@ TEST (TestRealtimeEvents, TestFactoryFunction)
     EXPECT_EQ(RtEventType::SET_BYPASS, event.type());
     EXPECT_EQ(131u, event.processor_id());
     EXPECT_TRUE(event.processor_command_event()->value());
-
-    event = RtEvent::make_stop_engine_event();
-    EXPECT_EQ(RtEventType::STOP_ENGINE, event.type());
 
     event = RtEvent::make_insert_processor_event(nullptr);
     EXPECT_EQ(RtEventType::INSERT_PROCESSOR, event.type());
@@ -217,12 +214,21 @@ TEST (TestRealtimeEvents, TestFactoryFunction)
     event = RtEvent::make_remove_gate_output_connection_event(gate_con);
     EXPECT_EQ(RtEventType::REMOVE_GATE_CONNECTION, event.type());
     EXPECT_TRUE(event.gate_connection_event()->output_connection());
+
+    event = RtEvent::make_timing_tick_event(29, 12);
+    EXPECT_EQ(RtEventType::TIMING_TICK, event.type());
+    EXPECT_EQ(29, event.timing_tick_event()->sample_offset());
+    EXPECT_EQ(12, event.timing_tick_event()->tick_count());
+
+    event = RtEvent::make_processor_notify_event(30, ProcessorNotifyRtEvent::Action::PARAMETER_UPDATE);
+    EXPECT_EQ(RtEventType::NOTIFY, event.type());
+    EXPECT_EQ(ProcessorNotifyRtEvent::Action::PARAMETER_UPDATE, event.processor_notify_event()->action());
 }
 
 TEST(TestRealtimeEvents, TestReturnableEvents)
 {
-    auto event = RtEvent::make_stop_engine_event();
-    auto event2 = RtEvent::make_stop_engine_event();
+    auto event = RtEvent::make_insert_processor_event(nullptr);
+    auto event2 = RtEvent::make_insert_processor_event(nullptr);
     auto typed_event = event.returnable_event();
     /* Assert that 2 events don't share the same id */
     EXPECT_NE(event2.returnable_event()->event_id(), typed_event->event_id());

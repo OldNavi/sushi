@@ -34,7 +34,7 @@ class BaseMidiFrontend
 public:
     explicit BaseMidiFrontend(midi_receiver::MidiReceiver* receiver) : _receiver(receiver) {}
 
-    virtual ~BaseMidiFrontend() {};
+    virtual ~BaseMidiFrontend() = default;
 
     virtual bool init() = 0;
 
@@ -56,6 +56,7 @@ class NullMidiFrontend : public BaseMidiFrontend
 {
 public:
     explicit NullMidiFrontend(midi_receiver::MidiReceiver* receiver) : BaseMidiFrontend(receiver) {}
+    explicit NullMidiFrontend(int /* input */, int /* outputs */, midi_receiver::MidiReceiver* receiver) : BaseMidiFrontend(receiver) {}
 
     bool init() override {return true;};
 

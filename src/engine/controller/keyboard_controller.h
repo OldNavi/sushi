@@ -32,7 +32,7 @@ namespace controller_impl {
 class KeyboardController : public ext::KeyboardController
 {
 public:
-    KeyboardController(BaseEngine* engine);
+    explicit KeyboardController(BaseEngine* engine);
 
     ~KeyboardController() override = default;
 
@@ -49,7 +49,6 @@ public:
     ext::ControlStatus send_modulation(int track_id, int channel, float value) override;
 
 private:
-    BaseEngine*                      _engine;
     dispatcher::BaseEventDispatcher* _event_dispatcher;
 };
 

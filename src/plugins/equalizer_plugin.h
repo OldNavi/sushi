@@ -29,7 +29,7 @@ namespace equalizer_plugin {
 
 constexpr int MAX_CHANNELS_SUPPORTED = 2;
 
-class EqualizerPlugin : public InternalPlugin
+class EqualizerPlugin : public InternalPlugin, public UidHelper<EqualizerPlugin>
 {
 public:
     EqualizerPlugin(HostControl hostControl);
@@ -40,13 +40,17 @@ public:
 
     void configure(float sample_rate) override;
 
-    void set_input_channels(int channels) override;
+    void set_enabled(bool enabled) override;
 
     void process_audio(const ChunkSampleBuffer &in_buffer, ChunkSampleBuffer &out_buffer) override;
 
+    static std::string_view static_uid();
+
 private:
+    void _reset_filters();
+
     float _sample_rate;
-    dsp::biquad::BiquadFilter _filters[MAX_CHANNELS_SUPPORTED];
+    std::array<dsp::biquad::BiquadFilter, MAX_CHANNELS_SUPPORTED> _filters;
 
     FloatParameterValue* _frequency;
     FloatParameterValue* _gain;

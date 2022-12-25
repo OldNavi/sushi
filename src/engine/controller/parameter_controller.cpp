@@ -39,7 +39,7 @@ inline ext::ParameterType to_external(const sushi::ParameterType type)
     }
 }
 
-inline std::vector<ext::ParameterInfo>  _read_parameters(const Processor* processor)
+inline std::vector<ext::ParameterInfo> _read_parameters(const Processor* processor)
 {
     assert(processor != nullptr);
     std::vector<ext::ParameterInfo> infos;
@@ -50,7 +50,7 @@ inline std::vector<ext::ParameterInfo>  _read_parameters(const Processor* proces
         {
             ext::ParameterInfo info;
             info.id = param->id();
-            info.type = ext::ParameterType::FLOAT;
+            info.type = to_external(param->type());
             info.label = param->label();
             info.name = param->name();
             info.unit = param->unit();
@@ -63,7 +63,7 @@ inline std::vector<ext::ParameterInfo>  _read_parameters(const Processor* proces
     return infos;
 }
 
-inline std::vector<ext::PropertyInfo>  _read_properties(const Processor* processor)
+inline std::vector<ext::PropertyInfo> _read_properties(const Processor* processor)
 {
     assert(processor != nullptr);
     std::vector<ext::PropertyInfo> infos;
@@ -82,8 +82,7 @@ inline std::vector<ext::PropertyInfo>  _read_properties(const Processor* process
     return infos;
 }
 
-ParameterController::ParameterController(BaseEngine* engine) : _engine(engine),
-                                                               _event_dispatcher(engine->event_dispatcher()),
+ParameterController::ParameterController(BaseEngine* engine) : _event_dispatcher(engine->event_dispatcher()),
                                                                _processors(engine->processor_container())
 {}
 
@@ -142,9 +141,8 @@ std::pair<ext::ControlStatus, ext::ParameterInfo> ParameterController::get_param
             info.type = to_external(descr->type());
             info.min_domain_value = descr->min_domain_value();
             info.max_domain_value = descr->max_domain_value();
-            info.automatable =  descr->type() == ParameterType::FLOAT || // TODO - this might not be the way we eventually want it
-                                descr->type() == ParameterType::INT   ||
-                                descr->type() == ParameterType::BOOL;
+            info.automatable = descr->automatable();
+
             return {ext::ControlStatus::OK, info};
         }
     }
@@ -193,7 +191,7 @@ std::pair<ext::ControlStatus, std::string> ParameterController::get_parameter_va
             return {ext::ControlStatus::OK, value};
         }
     }
-    return {ext::ControlStatus::NOT_FOUND, 0};
+    return {ext::ControlStatus::NOT_FOUND, ""};
 }
 
 std::pair<ext::ControlStatus, std::string> ParameterController::get_property_value(int processor_id, int property_id) const
@@ -208,7 +206,7 @@ std::pair<ext::ControlStatus, std::string> ParameterController::get_property_val
             return {ext::ControlStatus::OK, value};
         }
     }
-    return {ext::ControlStatus::NOT_FOUND, 0};
+    return {ext::ControlStatus::NOT_FOUND, ""};
 }
 
 ext::ControlStatus ParameterController::set_parameter_value(int processor_id, int parameter_id, float value)
@@ -232,7 +230,6 @@ ext::ControlStatus ParameterController::set_property_value(int processor_id, int
                                          static_cast<ObjectId>(property_id),
                                          value,
                                          IMMEDIATE_PROCESS);
-
     _event_dispatcher->post_event(event);
     return ext::ControlStatus::OK;
 }

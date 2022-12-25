@@ -2,7 +2,9 @@
 
 #include "test_utils/engine_mockup.h"
 #include "test_utils/jack_mockup.cpp"
+#ifdef SUSHI_BUILD_WITH_ALSA_MIDI
 #include "control_frontends/alsa_midi_frontend.cpp"
+#endif
 #include "engine/midi_dispatcher.h"
 
 #define private public
@@ -47,7 +49,7 @@ TEST_F(TestJackFrontend, TestOperation)
     auto ret_code = _module_under_test->init(&config);
     ASSERT_EQ(AudioFrontendStatus::OK, ret_code);
 
-    /* Can't call run directly cause that will freeze the test due to the sleep() call*/
+    /* Can't call run directly because that will freeze the test due to the sleep() call*/
     jack_activate(_module_under_test->_client);
 
     ASSERT_TRUE(_engine.process_called);

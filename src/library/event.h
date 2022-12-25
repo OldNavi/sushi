@@ -22,6 +22,7 @@
 #define SUSHI_CONTROL_EVENT_H
 
 #include <string>
+#include <memory>
 
 #include "types.h"
 #include "id_generator.h"
@@ -89,7 +90,13 @@ public:
     virtual bool is_keyboard_event() const {return false;}
 
     /* Convertible to ParameterChangeNotification */
+    virtual bool is_parameter_change_event() const {return false;}
+
+    /* Convertible to ParameterChangeNotification */
     virtual bool is_parameter_change_notification() const {return false;}
+
+    /* Convertible to PropertyChangeNotification */
+    virtual bool is_property_change_notification() const {return false;}
 
     /* Convertible to EngineEvent */
     virtual bool is_engine_event() const {return false;}
@@ -226,9 +233,11 @@ public:
                                            _parameter_id(parameter_id),
                                            _value(value) {}
 
-    virtual bool maps_to_rt_event() const override {return true;}
+    bool maps_to_rt_event() const override {return true;}
 
-    virtual RtEvent to_rt_event(int sample_offset) const override;
+    RtEvent to_rt_event(int sample_offset) const override;
+
+    bool is_parameter_change_event() const override {return true;}
 
     Subtype             subtype() const {return _subtype;}
     ObjectId            processor_id() const {return _processor_id;}
@@ -257,7 +266,7 @@ public:
                                         _property_id(property_id),
                                         _blob_value(blob_value) {}
 
-    virtual bool maps_to_rt_event() const override {return true;}
+    bool maps_to_rt_event() const override {return true;}
 
     RtEvent to_rt_event(int sample_offset) const override;
 
@@ -278,7 +287,7 @@ public:
                                         _property_id(property_id),
                                         _string_value(string_value) {}
 
-    virtual bool maps_to_rt_event() const override {return true;}
+    bool maps_to_rt_event() const override {return true;}
 
     RtEvent to_rt_event(int sample_offset) const override;
 
@@ -288,36 +297,88 @@ private:
     std::string _string_value;
 };
 
-// Inheriting from ParameterChangeEvent because they share the same data members but have
-// different behaviour
-class ParameterChangeNotificationEvent : public ParameterChangeEvent
+class RtStateEvent : public Event
 {
 public:
-    enum class Subtype
-    {
-        BOOL_PARAMETER_CHANGE_NOT,
-        INT_PARAMETER_CHANGE_NOT,
-        FLOAT_PARAMETER_CHANGE_NOT
-    };
-    ParameterChangeNotificationEvent(Subtype subtype,
-                                     ObjectId processor_id,
+    RtStateEvent(ObjectId processor_id,
+                 std::unique_ptr<RtState> state,
+                 Time timestamp);
+
+    ~RtStateEvent();
+
+    bool maps_to_rt_event() const override {return true;}
+
+    RtEvent to_rt_event(int sample_offset) const override;
+
+private:
+    ObjectId _processor_id;
+    mutable std::unique_ptr<RtState> _state;
+};
+
+class ParameterChangeNotificationEvent : public Event
+{
+public:
+    ParameterChangeNotificationEvent(ObjectId processor_id,
                                      ObjectId parameter_id,
-                                     float value,
-                                     Time timestamp) : ParameterChangeEvent(ParameterChangeEvent::Subtype::FLOAT_PARAMETER_CHANGE,
-                                                                            processor_id,
-                                                                            parameter_id,
-                                                                            value,
-                                                                            timestamp),
-                                                       _subtype(subtype) {}
+                                     float normalized_value,
+                                     float domain_value,
+                                     std::string formatted_value,
+                                     Time timestamp) : Event(timestamp),
+                                                       _processor_id(processor_id),
+                                                       _parameter_id(parameter_id),
+                                                       _normalized_value(normalized_value),
+                                                       _domain_value(domain_value),
+                                                       _formatted_value(formatted_value) {}
 
     bool is_parameter_change_notification() const override {return true;}
 
+    bool is_parameter_change_event() const override {return false;}
+
     bool maps_to_rt_event() const override {return false;}
 
-    Subtype subtype() const {return _subtype;}
+    ObjectId  processor_id() const {return _processor_id;}
+
+    ObjectId  parameter_id() const {return _parameter_id;}
+
+    float normalized_value() const {return _normalized_value;}
+
+    float domain_value() const {return _domain_value;}
+
+    const std::string& formatted_value() const {return _formatted_value;}
 
 private:
-    Subtype _subtype;
+    ObjectId    _processor_id;
+    ObjectId    _parameter_id;
+    float       _normalized_value;
+    float       _domain_value;
+    std::string _formatted_value;
+};
+
+class PropertyChangeNotificationEvent : public Event
+{
+public:
+    PropertyChangeNotificationEvent(ObjectId processor_id,
+                                    ObjectId property_id,
+                                    const std::string& value,
+                                    Time timestamp) : Event(timestamp),
+                                                      _processor_id(processor_id),
+                                                      _property_id(property_id),
+                                                      _value(value) {}
+
+    bool is_property_change_notification() const override {return true;}
+
+    bool maps_to_rt_event() const override {return false;}
+
+    ObjectId processor_id() const {return _processor_id;}
+
+    ObjectId property_id() const {return _property_id;}
+
+    const std::string& value() const {return _value;}
+
+private:
+    ObjectId    _processor_id;
+    ObjectId    _property_id;
+    std::string _value;
 };
 
 class SetProcessorBypassEvent : public Event
@@ -359,11 +420,16 @@ template <typename LambdaType>
 class LambdaEvent : public EngineEvent
 {
 public:
-    LambdaEvent(LambdaType work_lambda,
+    LambdaEvent(const LambdaType& work_lambda,
                 Time timestamp) : EngineEvent(timestamp),
                                   _work_lambda(work_lambda) {}
 
-    int execute(engine::BaseEngine*) const override {
+    LambdaEvent(LambdaType&& work_lambda,
+                Time timestamp) : EngineEvent(timestamp),
+                                  _work_lambda(std::move(work_lambda)) {}
+
+    int execute(engine::BaseEngine*) const override
+    {
         return _work_lambda();
     }
 
@@ -435,6 +501,9 @@ public:
     /* Convertible to TimingNotification */
     virtual bool is_timing_notification() const {return false;}
 
+    /* Convertible to TimingTickNotification */
+    virtual bool is_timing_tick_notification() const {return false;}
+
 protected:
     EngineNotificationEvent(Time timestamp) : Event(timestamp) {}
 };
@@ -470,6 +539,7 @@ public:
         PROCESSOR_DELETED,
         PROCESSOR_ADDED_TO_TRACK,
         PROCESSOR_REMOVED_FROM_TRACK,
+        PROCESSOR_UPDATED,
         TRACK_CREATED,
         TRACK_DELETED
     };
@@ -556,6 +626,19 @@ private:
     performance::ProcessTimings _timings;
 };
 
+class EngineTimingTickNotificationEvent : public EngineNotificationEvent
+{
+public:
+    EngineTimingTickNotificationEvent(int tick_count, Time timestamp) : EngineNotificationEvent(timestamp),
+                                                                        _tick_count(tick_count) {}
+
+    bool is_timing_tick_notification() const override {return true;}
+    int tick_count() const {return _tick_count;}
+
+private:
+    int _tick_count;
+};
+
 class AsynchronousWorkEvent : public Event
 {
 public:
@@ -583,7 +666,7 @@ public:
                                                       _rt_event_id(rt_event_id)
     {}
 
-    virtual Event* execute() override;
+    Event* execute() override;
 
 private:
     AsynchronousWorkCallback _work_callback;
@@ -619,10 +702,22 @@ public:
     AsynchronousBlobDeleteEvent(BlobData data,
                                 Time timestamp) : AsynchronousWorkEvent(timestamp),
                                                      _data(data) {}
-    virtual Event* execute() override;
+    Event* execute() override;
 
 private:
     BlobData _data;
+};
+
+class AsynchronousDeleteEvent : public AsynchronousWorkEvent
+{
+public:
+    AsynchronousDeleteEvent(RtDeletable* data,
+                            Time timestamp) : AsynchronousWorkEvent(timestamp),
+                                              _data(data) {}
+    Event* execute() override;
+
+private:
+    RtDeletable* _data;
 };
 
 class SetEngineTempoEvent : public EngineEvent

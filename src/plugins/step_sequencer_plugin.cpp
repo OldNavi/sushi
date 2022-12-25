@@ -21,14 +21,11 @@
 #include <algorithm>
 
 #include "plugins/step_sequencer_plugin.h"
-#include "logging.h"
 
 namespace sushi {
 namespace step_sequencer_plugin {
 
-SUSHI_GET_LOGGER_WITH_MODULE_NAME("step_seq");
-
-constexpr auto DEFAULT_NAME = "sushi.testing.step_sequencer";
+constexpr auto PLUGIN_UID = "sushi.testing.step_sequencer";
 constexpr auto DEFAULT_LABEL = "Step Sequencer";
 
 constexpr float SECONDS_IN_MINUTE = 60.0f;
@@ -38,25 +35,28 @@ constexpr std::array<int, 12> MINOR_SCALE = {0,0,2,3,3,5,5,7,8,8,10,10};
 
 StepSequencerPlugin::StepSequencerPlugin(HostControl host_control) : InternalPlugin(host_control)
 {
-    Processor::set_name(DEFAULT_NAME);
+    Processor::set_name(PLUGIN_UID);
     Processor::set_label(DEFAULT_LABEL);
     for (int i = 0; i < SEQUENCER_STEPS; ++i)
     {
         std::string str_nr = std::to_string(i);
         _pitch_parameters[i] = register_int_parameter("pitch_" + str_nr, "Pitch " + str_nr, "semitone",
                                                       0, -24, 24,
+                                                      Direction::AUTOMATABLE,
                                                       new IntParameterPreProcessor(-24, 24));
 
-        _step_parameters[i] = register_bool_parameter("step_" + str_nr, "Step " + str_nr, "", true);
-        _step_indicator_parameters[i] = register_bool_parameter("step_ind_" + str_nr, "Step Indication " + str_nr, "", true);
+        _step_parameters[i] = register_bool_parameter("step_" + str_nr, "Step " + str_nr, "",
+                                                      true, Direction::AUTOMATABLE);
+
+        _step_indicator_parameters[i] = register_bool_parameter("step_ind_" + str_nr, "Step Indication " + str_nr, "",
+                                                                true, Direction::AUTOMATABLE);
+
         assert(_pitch_parameters[i] && _step_indicator_parameters[i] && _step_indicator_parameters[i]);
     }
     for (auto& s : _sequence)
     {
         s = START_NOTE;
     }
-    _max_input_channels = 4;
-    _max_output_channels = 4;
 }
 
 ProcessorReturnCode StepSequencerPlugin::init(float sample_rate)
@@ -168,6 +168,11 @@ void StepSequencerPlugin::process_audio(const ChunkSampleBuffer& in_buffer, Chun
     _event_queue.clear();
 }
 
+std::string_view StepSequencerPlugin::static_uid()
+{
+    return PLUGIN_UID;
+}
+
 float samples_per_qn(float tempo, float samplerate)
 {
     return 8.0f * samplerate / tempo * SECONDS_IN_MINUTE;
@@ -178,6 +183,5 @@ int snap_to_scale(int note, const std::array<int, 12>& scale)
     int octave = note / OCTAVE;
     return scale[note % OCTAVE] + octave * OCTAVE;
 }
-
 }// namespace step_sequencer_plugin
 }// namespace sushi

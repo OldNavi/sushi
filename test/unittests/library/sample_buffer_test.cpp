@@ -1,12 +1,11 @@
 #include <algorithm>
+#include <array>
 #include "gtest/gtest.h"
 
 #include "library/sample_buffer.h"
 #include "test_utils/test_utils.h"
 
 using namespace sushi;
-
-constexpr unsigned int SAMPLE_RATE = 44000;
 
 TEST(TestSampleBuffer, TestCopying)
 {
@@ -91,6 +90,22 @@ TEST(TestSampleBuffer, TestNonOwningBuffer)
     EXPECT_FLOAT_EQ(2.0f, *test_buffer.channel(1));
 }
 
+TEST(TestSampleBuffer, TestCreateFromRawPointer)
+{
+    std::array<float, 2 * AUDIO_CHUNK_SIZE> raw_data;
+    std::fill(raw_data.begin(), raw_data.begin() + AUDIO_CHUNK_SIZE, 2.0f);
+    std::fill(raw_data.begin() + AUDIO_CHUNK_SIZE, raw_data.end(), 4.0f);
+
+    auto test_buffer = SampleBuffer<AUDIO_CHUNK_SIZE>::create_from_raw_pointer(raw_data.data(), 0, 2);
+    EXPECT_EQ(2, test_buffer.channel_count());
+    EXPECT_FLOAT_EQ(2.0, test_buffer.channel(0)[0]);
+    EXPECT_FLOAT_EQ(4.0, test_buffer.channel(1)[0]);
+
+    test_buffer = SampleBuffer<AUDIO_CHUNK_SIZE>::create_from_raw_pointer(raw_data.data(), 1, 1);
+    EXPECT_EQ(1, test_buffer.channel_count());
+    EXPECT_FLOAT_EQ(4.0, test_buffer.channel(0)[0]);
+}
+
 
 TEST(TestSampleBuffer, TestAssigningNonOwningBuffer)
 {
@@ -123,6 +138,20 @@ TEST(TestSampleBuffer, TestAssigningNonOwningBuffer)
     }
     // Touch the sample data to provoke a crash if it was accidentally deleted
     EXPECT_FLOAT_EQ(2.0f, *test_buffer_2.channel(1));
+}
+
+TEST(TestSampleBuffer, TestSwap)
+{
+    SampleBuffer<AUDIO_CHUNK_SIZE> buffer_1(2);
+    SampleBuffer<AUDIO_CHUNK_SIZE> buffer_2(1);
+    std::fill(buffer_1.channel(0), buffer_1.channel(0) + AUDIO_CHUNK_SIZE, 2.0f);
+
+    swap(buffer_1, buffer_2);
+
+    EXPECT_EQ(1, buffer_1.channel_count());
+    EXPECT_EQ(2, buffer_2.channel_count());
+    EXPECT_FLOAT_EQ(0.0f, buffer_1.channel(0)[0]);
+    EXPECT_FLOAT_EQ(2.0f, buffer_2.channel(0)[0]);
 }
 
 TEST(TestSampleBuffer, TestInitialization)

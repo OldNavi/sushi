@@ -24,7 +24,7 @@
 namespace sushi {
 namespace stereo_mixer_plugin {
 
-constexpr char DEFAULT_NAME[] = "sushi.testing.stereo_mixer";
+constexpr char PLUGIN_UID[] = "sushi.testing.stereo_mixer";
 constexpr char DEFAULT_LABEL[] = "Stereo Mixer";
 
 constexpr int MAX_CHANNELS_SUPPORTED = 2;
@@ -57,23 +57,38 @@ StereoMixerPlugin::StereoMixerPlugin(HostControl HostControl): InternalPlugin(Ho
 {
     _max_input_channels = MAX_CHANNELS_SUPPORTED;
     _max_output_channels = MAX_CHANNELS_SUPPORTED;
-    Processor::set_name(DEFAULT_NAME);
+    Processor::set_name(PLUGIN_UID);
     Processor::set_label(DEFAULT_LABEL);
 
     _ch1_pan = register_float_parameter("ch1_pan", "Channel 1 Pan", "",
-                                         -1.0, -1.0, 1.0, nullptr);
+                                        -1.0, -1.0, 1.0,
+                                        Direction::AUTOMATABLE,
+                                        nullptr);
+
     _ch1_gain = register_float_parameter("ch1_gain", "Channel 1 Gain", "",
-                                          0.0f, -120.0f, 24.0f,
-                                          new dBToLinPreProcessor(-120.0f, 24.0));
+                                         0.0f, -120.0f, 24.0f,
+                                         Direction::AUTOMATABLE,
+                                         new dBToLinPreProcessor(-120.0f, 24.0));
+
     _ch1_invert_phase = register_float_parameter("ch1_invert_phase", "Channel 1 Invert Phase", "",
-                                                  0.0f, 0.0f, 1.0f, nullptr);
+                                                 0.0f, 0.0f, 1.0f,
+                                                 Direction::AUTOMATABLE,
+                                                 nullptr);
     _ch2_pan = register_float_parameter("ch2_pan", "Channel 2 Pan", "",
-                                         1.0, -1.0, 1.0, nullptr);
+                                        1.0, -1.0, 1.0,
+                                        Direction::AUTOMATABLE,
+                                        nullptr);
+
     _ch2_gain = register_float_parameter("ch2_gain", "Channel 2 Gain", "",
-                                          0.0f, -120.0f, 24.0f,
-                                          new dBToLinPreProcessor(-120.0f, 24.0f));
+                                         0.0f, -120.0f, 24.0f,
+                                         Direction::AUTOMATABLE,
+                                         new dBToLinPreProcessor(-120.0f, 24.0f));
+
     _ch2_invert_phase = register_float_parameter("ch2_invert_phase", "Channel 2 Invert Phase", "",
-                                                  0.0f, 0.0f, 1.0f, nullptr);
+                                                 0.0f, 0.0f, 1.0f,
+                                                 Direction::AUTOMATABLE,
+                                                 nullptr);
+
     assert(_ch1_pan);
     assert(_ch1_gain);
     assert(_ch1_invert_phase);
@@ -151,6 +166,11 @@ void StereoMixerPlugin::process_audio(const ChunkSampleBuffer& input_buffer,
     {
         bypass_process(input_buffer, output_buffer);
     }
+}
+
+std::string_view StereoMixerPlugin::static_uid()
+{
+    return PLUGIN_UID;
 }
 
 } // namespace stereo_mixer_plugin

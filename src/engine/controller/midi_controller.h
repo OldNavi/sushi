@@ -27,11 +27,6 @@
 #include "engine/midi_dispatcher.h"
 
 namespace sushi {
-
-namespace ext {
-ext::MidiChannel midi_channel_from_int(int channel_int);
-}
-
 namespace engine {
 namespace controller_impl {
 
@@ -39,8 +34,7 @@ class MidiController : public ext::MidiController
 {
 public:
     MidiController(BaseEngine* engine,
-                   midi_dispatcher::MidiDispatcher* midi_dispatcher,
-                   ext::ParameterController* parameter_controller);
+                   midi_dispatcher::MidiDispatcher* midi_dispatcher);
 
     ~MidiController() override = default;
 
@@ -56,11 +50,15 @@ public:
 
     std::vector<ext::MidiPCConnection> get_all_pc_input_connections() const override;
 
+    bool get_midi_clock_output_enabled(int port) const override;
+
     std::pair<ext::ControlStatus, std::vector<ext::MidiCCConnection>>
     get_cc_input_connections_for_processor(int processor_id) const override;
 
     std::pair<ext::ControlStatus, std::vector<ext::MidiPCConnection>>
     get_pc_input_connections_for_processor(int processor_id) const override;
+
+    ext::ControlStatus set_midi_clock_output_enabled(bool enabled, int port) override;
 
     ext::ControlStatus
     connect_kbd_input_to_track(int track_id, ext::MidiChannel channel, int port, bool raw_midi) override;
@@ -92,10 +90,8 @@ public:
     ext::ControlStatus disconnect_all_pc_from_processor(int processor_id) override;
 
 private:
-    BaseEngine* _engine;
     dispatcher::BaseEventDispatcher* _event_dispatcher;
     midi_dispatcher::MidiDispatcher* _midi_dispatcher;
-    ext::ParameterController* _parameter_controller;
 };
 
 } // namespace controller_impl

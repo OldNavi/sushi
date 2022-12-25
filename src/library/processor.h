@@ -31,6 +31,7 @@
 #include "library/rt_event_pipe.h"
 #include "library/id_generator.h"
 #include "library/plugin_parameters.h"
+#include "processor_state.h"
 #include "engine/host_control.h"
 
 namespace sushi {
@@ -47,6 +48,31 @@ enum class ProcessorReturnCode
     PLUGIN_ENTRY_POINT_NOT_FOUND,
     PLUGIN_LOAD_ERROR,
     PLUGIN_INIT_ERROR,
+};
+
+enum class PluginType
+{
+    INTERNAL,
+    VST2X,
+    VST3X,
+    LV2
+};
+
+/**
+ * @brief  Unique plugin descriptor, used to instantiate and identify a Plugin type throughout Sushi.
+ */
+struct PluginInfo
+{
+    std::string uid;
+    std::string path;
+    PluginType type;
+
+    bool operator == (const PluginInfo& other) const
+    {
+        return (uid == other.uid) &&
+               (path == other.path) &&
+               (type == other.type);
+    }
 };
 
 class Processor
@@ -71,19 +97,17 @@ public:
      * @brief Configure an already initialised plugin
      * @param sample_rate the new sample rate to use
      */
-    virtual void configure(float /* sample_rate*/)
-    {
-        return;
-    }
+    virtual void configure(float /* sample_rate*/) {}
 
     /**
      * @brief Process a single realtime event that is to take place during the next call to process
+     *        Called from an audio processing thread.
      * @param event Event to process.
      */
     virtual void process_event(const RtEvent& event) = 0;
 
     /**
-     * @brief Process a chunk of audio.
+     * @brief Process a chunk of audio. Called from an audio processing thread.
      * @param in_buffer Input SampleBuffer
      * @param out_buffer Output SampleBuffer
      */
@@ -362,6 +386,30 @@ public:
         return _on_track;
     }
 
+    /**
+     * @brief  Set the complete state of the Processor (bypass state, program, parameters)
+     *         according to the supplied state object.
+     * @param state The state object to apply to the Processor
+     * @param realtime_running If true the Processor needs to take realtime data access
+     *        concerns into account when applying the state.
+     * @return
+     */
+    virtual ProcessorReturnCode set_state(ProcessorState* /*state*/, bool /*realtime_running*/)
+    {
+        return ProcessorReturnCode::UNSUPPORTED_OPERATION;
+    }
+
+    virtual ProcessorState save_state() const
+    {
+        return {};
+    }
+
+    virtual PluginInfo info() const
+    {
+        return PluginInfo();
+    }
+
+
 protected:
 
     /**
@@ -420,10 +468,10 @@ protected:
     * @param in_buffer Input SampleBuffer
     * @param out_buffer Output SampleBuffer
     */
-    void bypass_process(const ChunkSampleBuffer &in_buffer, ChunkSampleBuffer &out_buffer);
+    void bypass_process(const ChunkSampleBuffer& in_buffer, ChunkSampleBuffer& out_buffer);
 
     /**
-     * @breif Called from the audio callback to request work to be done in another,
+     * @brief Called from the audio callback to request work to be done in another,
      *        non-realtime thread.
      * @param callback The callback to call in the non realtime thread. The return
      *        value from the callback will be communicated back to the plugin in the
@@ -433,12 +481,24 @@ protected:
     EventId request_non_rt_task(AsyncWorkCallback callback);
 
     /**
+     * @brief Called from a realtime thread to asynchronously delete an object outside the rt tread
+     * @param object The object to delete.
+     */
+    void async_delete(RtDeletable* object);
+
+    /**
+     * @brief Called from a realtime thread to notify that all parameter values have changed and
+     *        should be reloaded.
+     */
+    void notify_state_change_rt();
+
+    /**
      * @brief Takes a parameter name and makes sure that it is unique and is not empty. An
      *        index will be added in case of duplicates
      * @param name The name of the parameter
      * @return An std::string containing a unique parameter name
      */
-    std::string _make_unique_parameter_name(std::string name) const;
+    std::string _make_unique_parameter_name(const std::string& name) const;
 
     /* Minimum number of output/input channels a processor should support should always be 0 */
     int _max_input_channels{0};
@@ -458,8 +518,8 @@ private:
     /* Automatically generated unique id for identifying this processor */
     ObjectId _id{ProcessorIdGenerator::new_id()};
 
-    std::string _unique_name{""};
-    std::string _label{""};
+    std::string _unique_name;
+    std::string _label;
 
     std::map<std::string, std::unique_ptr<ParameterDescriptor>> _parameters;
     std::vector<ParameterDescriptor*> _parameters_by_index;
@@ -587,5 +647,5 @@ private:
     int _ramp_count{0};
 };
 
-}; // end namespace sushi
+} // end namespace sushi
 #endif //SUSHI_PROCESSOR_H

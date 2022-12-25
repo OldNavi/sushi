@@ -19,15 +19,14 @@
  */
 
 #include "cv_gate_controller.h"
-#include "logging.h"
 
-SUSHI_GET_LOGGER_WITH_MODULE_NAME("controller");
 
 namespace sushi {
 namespace engine {
 namespace controller_impl {
 
 // TODO - Remove when stubs have been properly implemented
+#pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 
 int CvGateController::get_cv_input_ports() const
@@ -42,22 +41,22 @@ int CvGateController::get_cv_output_ports() const
 
 std::vector<ext::CvConnection> CvGateController::get_all_cv_input_connections() const
 {
-    return std::vector<ext::CvConnection>();
+    return {};
 }
 
 std::vector<ext::CvConnection> CvGateController::get_all_cv_output_connections() const
 {
-    return std::vector<ext::CvConnection>();
+    return {};
 }
 
 std::vector<ext::GateConnection> CvGateController::get_all_gate_input_connections() const
 {
-    return std::vector<ext::GateConnection>();
+    return {};
 }
 
 std::vector<ext::GateConnection> CvGateController::get_all_gate_output_connections() const
 {
-    return std::vector<ext::GateConnection>();
+    return {};
 }
 
 std::pair<ext::ControlStatus, std::vector<ext::CvConnection>>

@@ -23,7 +23,7 @@
 namespace sushi {
 namespace sample_delay_plugin {
 
-constexpr auto DEFAULT_NAME = "sushi.testing.sample_delay";
+constexpr auto PLUGIN_UID = "sushi.testing.sample_delay";
 constexpr auto DEFAULT_LABEL = "Sample delay";
 
 SampleDelayPlugin::SampleDelayPlugin(HostControl host_control) : InternalPlugin(host_control),
@@ -32,7 +32,7 @@ SampleDelayPlugin::SampleDelayPlugin(HostControl host_control) : InternalPlugin(
                                                                  _write_idx_ch2(0),
                                                                  _read_idx_ch2(0)
 {
-    Processor::set_name(DEFAULT_NAME);
+    Processor::set_name(PLUGIN_UID);
     Processor::set_label(DEFAULT_LABEL);
     _sample_delay_ch1 = register_int_parameter("sample_delay_ch1", 
                                            "Sample delay Channel 1", 
@@ -45,11 +45,24 @@ SampleDelayPlugin::SampleDelayPlugin(HostControl host_control) : InternalPlugin(
                                            "samples", 
                                            0,
                                            0,
-                                           MAX_DELAY - 1);
+                                           MAX_DELAY - 1,
+                                           Direction::AUTOMATABLE);
     for (int i = 0; i < DEFAULT_CHANNELS; i++)
     {
         _delaylines.push_back(std::array<float, MAX_DELAY>());
     }
+}
+
+void SampleDelayPlugin::set_input_channels(int channels)
+{
+    Processor::set_input_channels(channels);
+    _channel_config(channels);
+}
+
+void SampleDelayPlugin::set_output_channels(int channels)
+{
+    Processor::set_output_channels(channels);
+    _channel_config(channels);
 }
 
 void SampleDelayPlugin::process_audio(const ChunkSampleBuffer &in_buffer, ChunkSampleBuffer &out_buffer)
@@ -91,7 +104,39 @@ void SampleDelayPlugin::process_audio(const ChunkSampleBuffer &in_buffer, ChunkS
     }
 }
 
+void SampleDelayPlugin::_channel_config(int channels)
+{
+    int max_channels = std::max(std::max(channels, _current_input_channels), _current_output_channels);
+    if (_delaylines.size() != static_cast<size_t>(max_channels))
+    {
+        _delaylines.resize(max_channels);
+        _reset();
+    }
+}
 
-    
+void SampleDelayPlugin::set_enabled(bool enabled)
+{
+    if (enabled == false)
+    {
+        _reset();
+    }
+}
+
+std::string_view SampleDelayPlugin::static_uid()
+{
+    return PLUGIN_UID;
+}
+
+void SampleDelayPlugin::_reset()
+{
+    for (auto& line : _delaylines)
+    {
+        line.fill(0.0f);
+    }
+    _read_idx = 0;
+    _write_idx = 0;
+}
+
+
 } // namespace sample_delay_plugin
 } // namespace sushi

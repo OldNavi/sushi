@@ -20,42 +20,45 @@
  */
 
 #include <algorithm>
-#include <cmath>
 
 #include "plugins/control_to_cv_plugin.h"
 
 namespace sushi {
 namespace control_to_cv_plugin {
 
-constexpr auto DEFAULT_NAME = "sushi.testing.control_to_cv";
+constexpr auto PLUGIN_UID = "sushi.testing.control_to_cv";
 constexpr auto DEFAULT_LABEL = "Keyboard control to CV adapter";
 constexpr int TUNE_RANGE = 24;
 constexpr float PITCH_BEND_RANGE = 12.0f;
 constexpr int SEND_CHANNEL = 0;
 
-ControlToCvPlugin::ControlToCvPlugin(HostControl host_control) : InternalPlugin(host_control)
+ControlToCvPlugin::ControlToCvPlugin(HostControl host_control) :  InternalPlugin(host_control)
 {
-    Processor::set_name(DEFAULT_NAME);
+    Processor::set_name(PLUGIN_UID);
     Processor::set_label(DEFAULT_LABEL);
 
-    _send_velocity_parameter = register_bool_parameter("send_velocity", "Send Velocity", "", false);
-    _send_modulation_parameter = register_bool_parameter("send_modulation", "Send Modulation", "", false);
-    _retrigger_mode_parameter = register_bool_parameter("retrigger_enabled", "Retrigger enabled", "", false);
+    _send_velocity_parameter = register_bool_parameter("send_velocity", "Send Velocity", "", false, Direction::AUTOMATABLE);
+    _send_modulation_parameter = register_bool_parameter("send_modulation", "Send Modulation", "", false, Direction::AUTOMATABLE);
+    _retrigger_mode_parameter = register_bool_parameter("retrigger_enabled", "Retrigger enabled", "", false, Direction::AUTOMATABLE);
 
     _coarse_tune_parameter  = register_int_parameter("tune", "Tune", "semitones",
                                                      0, -TUNE_RANGE, TUNE_RANGE,
+                                                     Direction::AUTOMATABLE,
                                                      new IntParameterPreProcessor(-24, 24));
 
     _fine_tune_parameter  = register_float_parameter("fine_tune", "Fine Tune", "semitone",
                                                      0.0f, -1.0f, 1.0f,
+                                                     Direction::AUTOMATABLE,
                                                      new FloatParameterPreProcessor(-1, 1));
 
     _polyphony_parameter  = register_int_parameter("polyphony", "Polyphony", "",
                                                    1, 1, MAX_CV_VOICES,
+                                                   Direction::AUTOMATABLE,
                                                    new IntParameterPreProcessor(1, MAX_CV_VOICES));
 
     _modulation_parameter  = register_float_parameter("modulation", "Modulation", "",
                                                       0.0f, -1.0f, 1.0f,
+                                                      Direction::AUTOMATABLE,
                                                       new FloatParameterPreProcessor(-1, 1));
 
     assert(_send_velocity_parameter && _send_modulation_parameter && _coarse_tune_parameter &&
@@ -66,10 +69,12 @@ ControlToCvPlugin::ControlToCvPlugin(HostControl host_control) : InternalPlugin(
         auto i_str = std::to_string(i);
         _pitch_parameters[i] = register_float_parameter("pitch_" + i_str, "Pitch " + i_str, "semitones",
                                                         0.0f, 0.0f, 1.0f,
+                                                        Direction::AUTOMATABLE,
                                                         new FloatParameterPreProcessor(0.0f, 1.0f));
 
         _velocity_parameters[i] = register_float_parameter("velocity_" + i_str, "Velocity " + i_str, "",
                                                            0.5f, 0.0f, 1.0f,
+                                                           Direction::AUTOMATABLE,
                                                            new FloatParameterPreProcessor(0.0f, 1.0f));
 
         assert(_pitch_parameters[i] && _velocity_parameters[i]);
@@ -232,6 +237,11 @@ int ControlToCvPlugin::get_free_voice_id(int polyphony)
         }
     }
     return voice_id;
+}
+
+std::string_view ControlToCvPlugin::static_uid()
+{
+    return PLUGIN_UID;
 }
 
 float pitch_to_cv(float value)

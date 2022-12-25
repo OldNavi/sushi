@@ -27,28 +27,31 @@
 namespace sushi {
 namespace cv_to_control_plugin {
 
-constexpr auto DEFAULT_NAME = "sushi.testing.cv_to_control";
+constexpr auto PLUGIN_UID = "sushi.testing.cv_to_control";
 constexpr auto DEFAULT_LABEL = "Cv to control adapter";
 constexpr int TUNE_RANGE = 24;
 constexpr float PITCH_BEND_RANGE = 12.0f;
 
 CvToControlPlugin::CvToControlPlugin(HostControl host_control) : InternalPlugin(host_control)
 {
-    Processor::set_name(DEFAULT_NAME);
+    Processor::set_name(PLUGIN_UID);
     Processor::set_label(DEFAULT_LABEL);
-    _pitch_bend_mode_parameter = register_bool_parameter("pitch_bend_enabled", "Pitch bend enabled", "", false);
-    _velocity_mode_parameter = register_bool_parameter("velocity_enabled", "Velocity enabled", "", false);
+    _pitch_bend_mode_parameter = register_bool_parameter("pitch_bend_enabled", "Pitch bend enabled", "", false, Direction::AUTOMATABLE);
+    _velocity_mode_parameter = register_bool_parameter("velocity_enabled", "Velocity enabled", "", false, Direction::AUTOMATABLE);
 
     _channel_parameter  = register_int_parameter("channel", "Channel", "",
                                                  0, 0, 16,
+                                                 Direction::AUTOMATABLE,
                                                  new IntParameterPreProcessor(0, 16));
 
     _coarse_tune_parameter  = register_int_parameter("tune", "Tune", "semitones",
                                                      0, -TUNE_RANGE, TUNE_RANGE,
+                                                     Direction::AUTOMATABLE,
                                                      new IntParameterPreProcessor(-TUNE_RANGE, TUNE_RANGE));
 
     _polyphony_parameter  = register_int_parameter("polyphony", "Polyphony", "",
                                                    1, 1, MAX_CV_VOICES,
+                                                   Direction::AUTOMATABLE,
                                                    new IntParameterPreProcessor(1, MAX_CV_VOICES));
 
     assert(_pitch_bend_mode_parameter && _velocity_mode_parameter && _channel_parameter &&
@@ -59,10 +62,12 @@ CvToControlPlugin::CvToControlPlugin(HostControl host_control) : InternalPlugin(
         auto i_str = std::to_string(i);
         _pitch_parameters[i] = register_float_parameter("pitch_" + i_str, "Pitch " + i_str, "semitones",
                                                         0.0f, 0.0f, 1.0f,
+                                                        Direction::AUTOMATABLE,
                                                         new FloatParameterPreProcessor(0.0f, 1.0f));
 
         _velocity_parameters[i] = register_float_parameter("velocity_" + i_str, "Velocity " + i_str, "",
                                                            0.5f, 0.0f, 1.0f,
+                                                           Direction::AUTOMATABLE,
                                                            new FloatParameterPreProcessor(0.0f, 1.0f));
 
         assert(_pitch_parameters[i] && _velocity_parameters[i]);
@@ -85,7 +90,7 @@ void CvToControlPlugin::configure(float sample_rate)
 
 void CvToControlPlugin::process_event(const RtEvent& event)
 {
-    // Plugins listens to all channels
+    // Plugin listens to all channels
     if (event.type() == RtEventType::NOTE_ON || event.type() == RtEventType::NOTE_OFF)
     {
         _gate_events.push(event);
@@ -112,6 +117,12 @@ void CvToControlPlugin::process_audio(const ChunkSampleBuffer&  /*in_buffer*/, C
     _send_deferred_events(channel);
     _process_cv_signals(polyphony, channel, tune, send_velocity, send_pitch_bend);
     _process_gate_changes(polyphony, channel, tune, send_velocity, send_pitch_bend);
+}
+
+
+std::string_view CvToControlPlugin::static_uid()
+{
+    return PLUGIN_UID;
 }
 
 void CvToControlPlugin::_send_deferred_events(int channel)

@@ -44,10 +44,11 @@ enum WavWriterStatus : int
     FAILURE
 };
 
-class WavWriterPlugin : public InternalPlugin
+class WavWriterPlugin : public InternalPlugin, public UidHelper<WavWriterPlugin>
 {
 public:
     explicit WavWriterPlugin(HostControl host_control);
+
     ~WavWriterPlugin();
 
     ProcessorReturnCode init(float sample_rate) override;
@@ -63,6 +64,8 @@ public:
         return reinterpret_cast<WavWriterPlugin*>(data)->_non_rt_callback(id);
     }
 
+    static std::string_view static_uid();
+
 private:
     WavWriterStatus _start_recording();
     WavWriterStatus _stop_recording();
@@ -74,7 +77,7 @@ private:
     memory_relaxed_aquire_release::CircularFifo<std::array<float, AUDIO_CHUNK_SIZE * N_AUDIO_CHANNELS>, RINGBUFFER_SIZE> _ring_buffer;
 
     std::vector<float> _file_buffer;
-    SNDFILE* _output_file;
+    SNDFILE* _output_file{nullptr};
     SF_INFO _soundfile_info;
 
     BoolParameterValue* _recording_parameter;

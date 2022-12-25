@@ -39,9 +39,9 @@ GrpcServer::GrpcServer(const std::string& listen_address,
                                                                _midi_control_service{std::make_unique<MidiControlService>(controller)},
                                                                _audio_routing_control_service{std::make_unique<AudioRoutingControlService>(controller)},
                                                                _osc_control_service{std::make_unique<OscControlService>(controller)},
+                                                               _session_control_service{std::make_unique<SessionControlService>(controller)},
                                                                _notification_control_service{std::make_unique<NotificationControlService>(controller)},
                                                                _server_builder{std::make_unique<grpc::ServerBuilder>()},
-                                                               _controller{controller},
                                                                _running{false}
 {}
 
@@ -54,6 +54,7 @@ void GrpcServer::AsyncRpcLoop()
     new SubscribeToTrackChangesCallData(_notification_control_service.get(), _async_rpc_queue.get());
     new SubscribeToProcessorChangesCallData(_notification_control_service.get(), _async_rpc_queue.get());
     new SubscribeToParameterUpdatesCallData(_notification_control_service.get(), _async_rpc_queue.get());
+    new SubscribeToPropertyUpdatesCallData(_notification_control_service.get(), _async_rpc_queue.get());
 
     while (_running.load())
     {
@@ -83,6 +84,7 @@ void GrpcServer::start()
     _server_builder->RegisterService(_midi_control_service.get());
     _server_builder->RegisterService(_audio_routing_control_service.get());
     _server_builder->RegisterService(_osc_control_service.get());
+    _server_builder->RegisterService(_session_control_service.get());
     _server_builder->RegisterService(_notification_control_service.get());
 
     _async_rpc_queue = _server_builder->AddCompletionQueue();
@@ -93,7 +95,7 @@ void GrpcServer::start()
 
 void GrpcServer::stop()
 {
-    auto now = std::chrono::high_resolution_clock::now();
+    auto now = std::chrono::system_clock::now();
     _running.store(false);
     _server->Shutdown(now + SERVER_SHUTDOWN_DEADLINE);
     _async_rpc_queue->Shutdown();
