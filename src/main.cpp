@@ -489,7 +489,7 @@ int main(int argc, char* argv[])
     // Load Configuration //
     ////////////////////////////////////////////////////////////////////////////////
 
-    auto status = configurator->load_host_config();
+    //auto status = configurator->load_host_config();
     if(status != sushi::jsonconfig::JsonConfigReturnStatus::OK)
     {
         error_exit("Failed to load host configuration from config file");

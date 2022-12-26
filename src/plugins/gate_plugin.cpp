@@ -48,26 +48,26 @@ GatePlugin::GatePlugin(HostControl host_control)
     }
     _sample_rate = SAMPLE_RATE_DEFAULT;
     _threshold = register_float_parameter(
-        "threshold", "Gate Threshold", "db", THRESHOLD_DEFAULT, -70.0f, 12.0f,
+        "threshold", "Gate Threshold", "db", THRESHOLD_DEFAULT, -70.0f, 12.0f, Direction::AUTOMATABLE,
         new dBToLinPreProcessor(THRESHOLD_DEFAULT, 12.0));
 
     _attack = register_float_parameter(
-        "attack", "Gate Attack time", "ms", ATTACK_DEFAULT, 0.1f, 500.0f,
+        "attack", "Gate Attack time", "ms", ATTACK_DEFAULT, 0.1f, 500.0f,Direction::AUTOMATABLE,
         new FloatParameterPreProcessor(0.01f, 500.0f));
 
     _hold = register_float_parameter(
-        "hold", "Gate Hold time", "ms", HOLD_DEFAULT, 5.0f, 3000.0f,
+        "hold", "Gate Hold time", "ms", HOLD_DEFAULT, 5.0f, 3000.0f,Direction::AUTOMATABLE,
         new FloatParameterPreProcessor(5.0f, 3000.0f));
 
     _decay = register_float_parameter(
-        "decay", "Gate Decay time", "ms", DECAY_DEFAULT, 5.0f, 4000.0f,
+        "decay", "Gate Decay time", "ms", DECAY_DEFAULT, 5.0f, 4000.0f,Direction::AUTOMATABLE,
         new FloatParameterPreProcessor(5.0f, 4000.0f));
 
     _range = register_float_parameter("range", "Gate Range", "db",
-                                      RANGE_DEFAULT, -90.0f, -20.0f,
+                                      RANGE_DEFAULT, -90.0f, -20.0f,Direction::AUTOMATABLE,
                                       new dBToLinPreProcessor(-90.0f, -20.0f));
     _update_rate_parameter = register_float_parameter(
-        "update_rate", "Update Rate", "/s", DEFAULT_REFRESH_RATE, 0.1, 25,
+        "update_rate", "Update Rate", "/s", DEFAULT_REFRESH_RATE, 0.1, 25,Direction::AUTOMATABLE,
         new FloatParameterPreProcessor(0.1, DEFAULT_REFRESH_RATE));
 
     std::string param_name = "status_{}";
@@ -75,7 +75,7 @@ GatePlugin::GatePlugin(HostControl host_control)
     for (int i = 0; i < MAX_CHANNELS_SUPPORTED; ++i)
     {
         _gate_status[i] = register_bool_parameter(fmt::format(param_name, i), fmt::format(param_label, i), "",
-                                                        false);
+                                                        false,Direction::AUTOMATABLE);
         assert (_gate_status[i]);
     }
 
@@ -239,6 +239,11 @@ void GatePlugin::process_audio(const ChunkSampleBuffer &in_buffer,
 }
 
 void GatePlugin::_process_updates() {}
+
+std::string_view GatePlugin::static_uid()
+{
+    return DEFAULT_NAME;
+}
 
 }  // namespace gate_plugin
 }  // namespace sushi

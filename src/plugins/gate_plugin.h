@@ -58,7 +58,8 @@ public:
     void process_event(const RtEvent& event) override;
 
     void process_audio(const ChunkSampleBuffer &in_buffer, ChunkSampleBuffer &out_buffer) override;
-
+    
+    static std::string_view static_uid();
 private:
     void init_values();
     void _update_refresh_interval(float rate, float sample_rate);

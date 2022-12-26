@@ -39,7 +39,8 @@ SampleDelayPlugin::SampleDelayPlugin(HostControl host_control) : InternalPlugin(
                                            "samples", 
                                            0,
                                            0,
-                                           MAX_DELAY - 1);
+                                           MAX_DELAY - 1,
+					   Direction::AUTOMATABLE);
     _sample_delay_ch2 = register_int_parameter("sample_delay_ch2", 
                                            "Sample delay Channel 2", 
                                            "samples", 
@@ -133,8 +134,10 @@ void SampleDelayPlugin::_reset()
     {
         line.fill(0.0f);
     }
-    _read_idx = 0;
-    _write_idx = 0;
+    _read_idx_ch1 = 0;
+    _read_idx_ch2 = 0;
+    _write_idx_ch1 = 0;
+    _write_idx_ch2 = 0;
 }
 
 

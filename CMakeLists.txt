@@ -146,7 +146,7 @@ if (${SUSHI_WITH_XENOMAI})
 
     # External libraries:
     # explicitly link with cobalt lib
-    set(XENOMAI_BASE_DIR "/usr/xenomai" CACHE STRING "xenomai base dir path")
+    set(XENOMAI_BASE_DIR "/usr/local" CACHE STRING "xenomai base dir path")
 
     if(NOT "$ENV{CMAKE_SYSROOT}" STREQUAL "")
         set(CMAKE_SYSROOT "$ENV{CMAKE_SYSROOT}")
@@ -157,7 +157,7 @@ if (${SUSHI_WITH_XENOMAI})
         message("XENOMAI_BASE_DIR is " ${XENOMAI_BASE_DIR})
     endif()
 
-    find_library(COBALT_LIB cobalt HINTS ${XENOMAI_BASE_DIR}/lib)
+    find_library(COBALT_LIB evl HINTS ${XENOMAI_BASE_DIR}/lib)
 
     set(TWINE_WITH_XENOMAI ON CACHE BOOL "" FORCE)
     find_library(RASPA_LIB
@@ -559,16 +559,16 @@ if (${WITH_RPC_INTERFACE})
     add_subdirectory(rpc_interface)
 endif()
 
-add_subdirectory(third-party EXCLUDE_FROM_ALL)
+#add_subdirectory(third-party EXCLUDE_FROM_ALL)
 
 #################################
 #  Linked libraries             #
 #################################
 
-find_package(SndFile CONFIG REQUIRED)
+#find_package(SndFile CONFIG REQUIRED)
 
 set(COMMON_LIBRARIES
-    SndFile::sndfile
+    sndfile
     pthread
     dl
     fifo
